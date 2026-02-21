@@ -1,0 +1,236 @@
+
+import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
+
+/**
+ * 安全获取 API Key 的工具函数
+ */
+const getApiKey = () => {
+  try {
+    // 兼容 Vite 环境变量
+    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_GEMINI_API_KEY) {
+      return import.meta.env.VITE_GEMINI_API_KEY;
+    }
+    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+      return process.env.API_KEY;
+    }
+  } catch (e) {
+    console.warn("API Key access warning:", e);
+  }
+  return "";
+};
+
+/**
+ * 通用的指数退避重试包装函数
+ */
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 3,
+  initialDelay: number = 1000
+): Promise<T> {
+  let lastError: any;
+  for (let i = 0; i <= maxRetries; i++) {
+    try {
+      return await operation();
+    } catch (error: any) {
+      lastError = error;
+      const isRetryable = 
+        error?.status === 'UNAVAILABLE' || 
+        error?.message?.includes('overloaded') || 
+        error?.message?.includes('503') ||
+        error?.message?.includes('429');
+
+      if (i < maxRetries && isRetryable) {
+        const delay = initialDelay * Math.pow(2, i);
+        console.warn(`Gemini API overloaded/unavailable. Retrying in ${delay}ms... (Attempt ${i + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
+}
+
+const OFF_TOP_IC_REPLY = "抱歉，我只能回答乒乓球相关的问题。您可以尝试上传您的训练或比赛视频，让我为您进行深度分析，也可以根据您的打法推荐器材。";
+
+// --- 知识库预处理占位逻辑 ---
+const preprocessKnowledge = (content: string, isVip: boolean = false) => {
+  if (isVip) return content.replace(/<VIP_SECRET>|<\/VIP_SECRET>/g, '');
+  return content.replace(/<VIP_SECRET>[\s\S]*?<\/VIP_SECRET>/g, '\n[该处有进阶秘籍，付费会员解锁后可查看]\n');
+};
+
+export const DEFAULT_COACH_INSTRUCTION = `你是一名资深的乒乓球教练及实战战术专家。不要称呼用户为“球友”，语气简练专业。
+
+【核心任务】：
+1. 技术动作分析：对比标准动作，给出【存在问题】和【改进建议】。
+2. AI 场外指导（实战分析）：基于视频表现，输出【客观表现】和【克敌制胜建议】。
+
+【场外指导输出规范】：
+如果你正在进行“AI 场外指导”，必须严格遵循以下结构：
+
+【客观表现】：
+- 红方（用户）：[基于视频描述其技战术表现，如：反手拧拉得分率高]
+- 蓝方（对手）：[描述对手表现，如：发球落点单一]
+- 关键得失分点：[描述具体回合]
+
+【克敌制胜建议】：
+- 给红方：[如何发挥优势，针对对手弱点打]
+- 给蓝方：[如何反制红方，弥补自身短板]
+
+【约束条件】：
+- 严禁废话，总字数控制在 150 字以内。
+- 优先参考提供的知识库逻辑。`;
+
+
+export const EQUIPMENT_ADVISOR_INSTRUCTION = `你是一名专业的乒乓球器材顾问。
+你的回答必须【极致精简】且【高度结构化】。
+
+【核心原则】：
+如果你判断用户的输入内容与乒乓球器材或乒乓球话题完全无关，请直接回复：
+“${OFF_TOPIC_REPLY}”
+
+1. 如果用户咨询具体的器材（例如：蝴蝶D09C）：
+   请严格按照以下格式输出，严禁使用短横线（-）或任何形式的列项符号：
+   
+   【性能特点】：
+   [第一点特性描述，直接写文字]
+   [第二点特性描述]
+   
+   【适合打法】：[描述]
+   【代表运动员】：[姓名]
+   【价格区间】：[金额]
+
+2. 如果用户寻求推荐，请分行主动询问：
+   1) 您想咨询：底板、胶皮还是整套器材？
+   2) 您的打法：例如横板两面反胶/直板快攻等？
+   3) 您的预算：大致范围？
+
+3. 推荐方案时（同样禁止使用符号）：
+   【底板】：[名称]（理由：...）
+   【正手】：[名称]
+   【反手】：[名称]
+
+回复要求：
+- 严禁在每行开头使用“-”或“*”。
+- 确保主题（【...】）与下方内容紧凑。
+- 禁止多余的客套话。`;
+
+export const getAIResponse = async (prompt: string, systemInstruction: string = DEFAULT_COACH_INSTRUCTION) => {
+  const apiKey = getApiKey();
+  
+  if (!apiKey) {
+    console.error("Gemini API Key is missing in environment variables.");
+    return "AI 助手未配置 API Key，请联系管理员。";
+  }
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    // 后续此处将动态读取知识库文件并注入 Context
+    const response = await withRetry<GenerateContentResponse>(() => ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
+      config: {
+        systemInstruction: systemInstruction,
+      },
+    }));
+    
+    return response.text || "AI 助手暂时没有回应，请重试。";
+  } catch (error) {
+    console.error("Gemini Service Error:", error);
+    return "AI 助手目前正忙（服务过载），请稍后重试。";
+  }
+};
+
+/**
+ * 语音合成功能 (TTS)
+ */
+export const generateSpeech = async (text: string) => {
+  const apiKey = getApiKey();
+  if (!apiKey) return null;
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    // 使用老板指定的 gemini-2.5-flash-preview-tts，响应更快
+    const response = await withRetry<GenerateContentResponse>(() => ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text: `Please read the following text aloud with a professional and encouraging tone: ${text.trim()}` }] }],
+      config: {
+        responseModalities: ["AUDIO"],
+      },
+    }));
+
+    const part = response.candidates?.[0]?.content?.parts?.[0];
+    if (part?.inlineData?.data) {
+      return part.inlineData.data;
+    }
+    return null;
+  } catch (error) {
+    console.error("TTS API Error Details:", error);
+    return null;
+  }
+};
+
+/**
+ * 根据技术动作描述生成背景图片
+ */
+export const generateActionImage = async (actionDescription: string) => {
+  const apiKey = getApiKey();
+  if (!apiKey) return null;
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await withRetry<GenerateContentResponse>(() => ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: {
+        parts: [
+          {
+            text: `A cinematic, high-quality sports photography shot of a professional table tennis player performing a ${actionDescription}. Focused on technique, blurred background, dynamic movement, professional lighting.`,
+          },
+        ],
+      },
+    }));
+
+    if (response.candidates && response.candidates[0]?.content?.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) {
+          return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        }
+      }
+    }
+  } catch (error) {
+    console.error("Image Generation Error:", error);
+  }
+  return null;
+};
+
+/**
+ * 音频解码与处理工具函数
+ */
+export function decodeBase64(base64: string): Uint8Array {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+export async function decodeAudioData(
+  data: Uint8Array,
+  ctx: AudioContext,
+  sampleRate: number = 24000,
+  numChannels: number = 1,
+): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+    }
+  }
+  return buffer;
+}

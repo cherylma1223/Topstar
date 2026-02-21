@@ -1,0 +1,9 @@
+node_modules/
+.DS_Store
+.env
+dist/
+.trash/
+*.log
+backups/
+temp_update/
+old_env_check/

@@ -1,0 +1,23 @@
+{
+  "version": "1.0",
+  "entries": [
+    {
+      "id": "bh_flick",
+      "category": "actions",
+      "path": "src/assets/knowledge/actions/bh_flick.md",
+      "summary": "反手拧拉技术细节、常见问题及训练纠错建议"
+    },
+    {
+      "id": "rubber_d09c",
+      "category": "equipment",
+      "path": "src/assets/knowledge/equipment/rubbers.md",
+      "summary": "蝴蝶D09C胶皮性能参数与搭配建议"
+    },
+    {
+      "id": "match_logic",
+      "category": "tactics",
+      "path": "src/assets/knowledge/tactics/direct_match_logic.md",
+      "summary": "实战表现与双向博弈策略映射库，包含反手长球、正手短球等实战建议"
+    }
+  ]
+}
