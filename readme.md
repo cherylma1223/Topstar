@@ -1,3 +1,3 @@
-##github account
-username: cherylma1223
-pwd: 141223love
+# Topstar - AI 乒乓球教练
+
+智能乒乓球训练助手，提供技术动作分析、器材推荐和战术指导。
