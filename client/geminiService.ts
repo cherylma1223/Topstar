@@ -8,40 +8,13 @@ const API_BASE = '/api/v1/ai';
 
 const OFF_TOP_REPLY = "抱歉，我只能回答乒乓球相关的问题。您可以尝试上传您的训练或比赛视频，让我为您进行深度分析，也可以根据您的打法推荐器材。";
 
-// ---------------------------------------------------------
-// 乒乓球知识库上下文 (Knowledge Base Context)
-// ---------------------------------------------------------
-const KNOWLEDGE_BASE_CONTEXT = `
-以下是你必须参考的乒乓球专业知识库：
-
-【技术动作-反手拧拉 (Ref: actions/bh_flick_zjk.md)】：
-- 动作要领：双脚跨度大，重心压低并稍微偏向右侧。肘部必须向前架起作为支撑点，严禁贴肋。手腕极度内扣（拍头指着腹部）。击球瞬间前臂带动手腕像拧螺丝一样外展，在最高点通过薄摩擦把球"撕"过去。
-- 常见问题：撞击多导致出界需加深内扣加强"刷"球皮感；发力闷需检查肘部是否顶出去留出爆发空间。
-- 训练建议：多球训练强化内扣角度，体会"刷"球皮的手感；配合重心由后向前的蹬伸。
-- 视频教程：[张继科拧拉动作示范](https://drive.google.com/file/d/13VkToMh1kvnbKRhHsLlgJ_D_WaT-Eef0/view)
-- 核心秘诀(VIP专属)：食指二次点火——接触瞬间食指猛压拍肩，为球增加二次加速度产生"喷射感"。
-
-【战术表现与策略映射 (Ref: tactics/direct_match_logic.md)】：
-- 场景：被对方反手底线长球顶住 / 处理反手长球被动。
-- 定性：节奏被压制，挥拍空间被挤压。
-- 处理策略：不要拉手，不要往后躲！越躲越被顶。直接在台面上出手，球起跳即迎上去借力带回去。下旋略往上摩擦，上旋直接往前。
-- 场景：处理正手位短球被动。
-- 策略：敢于上步！右脚迅速插进球台深处，重心跟上，在最高点挑打或拧挑，严禁等球下降。
-
-【器材知识-D09C】：
-- 性能特点：蝴蝶粘性套胶，兼顾台内控制与远台底劲；支撑力强，搭配Viscaria等底板上限极高。
-- 适合打法：发力出色的进攻型选手。
-- 价格区间：国行刮码 390-400元；日版有码 400-430元；国行有码 450-490元。
-`;
-
 export const DEFAULT_COACH_INSTRUCTION = `你是一名资深的乒乓球教练。语气简练专业，充满洞察力。
-
-${KNOWLEDGE_BASE_CONTEXT}
 
 【核心任务】：
 1. 识别意图：
    - 如果是咨询具体动作（如：怎么练习拧拉、动作要领是什么），必须严格按照【技术动作输出模板】回答。
    - 如果是咨询实战表现（如：被长球顶住、处理不掉短球），必须严格按照【战术策略输出模板】回答。
+   - 如果知识库中有相关文件内容，必须严格参考知识库内容回答，不要编造。
 
 2. 结构化输出规范（严禁编造结构，严禁使用列表符号 - 或 *）：
 
@@ -50,7 +23,7 @@ ${KNOWLEDGE_BASE_CONTEXT}
 第一行：一句核心总结。
 
 【动作要领】
-[参考知识库 actions 库的动作要领，分步描述]
+[参考知识库中的动作要领，分步描述]
 
 【常见问题】
 [描述技术上的核心痛点或误区]
@@ -62,7 +35,7 @@ ${KNOWLEDGE_BASE_CONTEXT}
 请务必按照 [视频名称](URL) 的 Markdown 链接格式输出。
 
 【核心秘诀(VIP专属)】
-[务必包含知识库中的 VIP 秘诀内容]
+[务必包含知识库中的核心秘诀内容]
 
 ---
 【战术策略输出模板】：
@@ -81,8 +54,6 @@ ${KNOWLEDGE_BASE_CONTEXT}
 
 export const EQUIPMENT_ADVISOR_INSTRUCTION = `你是一名专业的乒乓球器材顾问。
 你的回答必须【极致精简】且【高度结构化】。
-
-${KNOWLEDGE_BASE_CONTEXT}
 
 【核心原则】：
 如果你判断用户的输入内容与乒乓球器材或乒乓球话题完全无关，请直接回复：
@@ -150,13 +121,13 @@ async function withRetry<T>(
 /**
  * AI 聊天 — 通过后端代理
  */
-export const getAIResponse = async (prompt: string, systemInstruction: string = DEFAULT_COACH_INSTRUCTION) => {
+export const getAIResponse = async (prompt: string, history: { sender: string, content: string }[] = [], systemInstruction: string = DEFAULT_COACH_INSTRUCTION) => {
   try {
     const data = await withRetry(async () => {
       const res = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, systemInstruction }),
+        body: JSON.stringify({ prompt, history, systemInstruction }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));

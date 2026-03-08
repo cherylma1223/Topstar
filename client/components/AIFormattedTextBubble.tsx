@@ -22,7 +22,7 @@ const AIFormattedTextBubble: React.FC<AIFormattedTextBubbleProps> = ({
 }) => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
-  
+
   // 判断是否为结构化消息
   const isStructured = content.includes('【');
   const isInitialMessage = id.includes('welcome') || (!isStructured && content.length < 80);
@@ -36,13 +36,13 @@ const AIFormattedTextBubble: React.FC<AIFormattedTextBubbleProps> = ({
 
   const stopAudio = () => {
     if (sourceRef.current) {
-      try { 
+      try {
         isManuallyStoppedRef.current = true;
         if (audioCtxRef.current) {
           pausedAtRef.current += audioCtxRef.current.currentTime - startTimeRef.current;
         }
-        sourceRef.current.stop(); 
-      } catch (e) {}
+        sourceRef.current.stop();
+      } catch (e) { }
       setIsSpeaking(false);
     }
   };
@@ -57,7 +57,7 @@ const AIFormattedTextBubble: React.FC<AIFormattedTextBubbleProps> = ({
   useEffect(() => {
     return () => {
       if (sourceRef.current) {
-        try { sourceRef.current.stop(); } catch (e) {}
+        try { sourceRef.current.stop(); } catch (e) { }
       }
     };
   }, []);
@@ -75,10 +75,39 @@ const AIFormattedTextBubble: React.FC<AIFormattedTextBubbleProps> = ({
       return;
     }
 
+    const stripVIPContentForSpeech = (text: string): string => {
+      const lines = text.split('\n');
+      const resultLines: string[] = [];
+      let isInsideVIPSection = false;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) {
+          if (!isInsideVIPSection) resultLines.push(line);
+          continue;
+        }
+
+        const headerMatch = line.match(/【([^】]+)】/);
+
+        if (headerMatch) {
+          const title = headerMatch[1];
+          isInsideVIPSection = title.includes('VIP') || title.includes('秘诀');
+        }
+
+        if (!isInsideVIPSection) {
+          resultLines.push(line);
+        }
+      }
+
+      // Strip Markdown links: [Name](URL) -> Name
+      return resultLines.join('\n').replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1');
+    };
+
     if (!audioBufferRef.current) {
       setIsLoadingAudio(true);
       try {
-        const base64Audio = await generateSpeech(content);
+        const speechText = stripVIPContentForSpeech(content);
+        const base64Audio = await generateSpeech(speechText);
         if (base64Audio) {
           audioBufferRef.current = await decodeAudioData(decodeBase64(base64Audio), ctx, 24000, 1);
           pausedAtRef.current = 0;
@@ -97,7 +126,7 @@ const AIFormattedTextBubble: React.FC<AIFormattedTextBubbleProps> = ({
       const source = ctx.createBufferSource();
       source.buffer = buffer;
       source.connect(ctx.destination);
-      
+
       source.onended = () => {
         if (!isManuallyStoppedRef.current) {
           pausedAtRef.current = 0;
@@ -121,10 +150,10 @@ const AIFormattedTextBubble: React.FC<AIFormattedTextBubbleProps> = ({
         ${isStructured ? 'p-4' : 'p-5'} 
         pr-12 rounded-2xl border bg-white dark:bg-[#1e2933] text-slate-700 dark:text-white/90 border-slate-200 dark:border-white/5 rounded-tl-none shadow-sm transition-all hover:shadow-md relative
       `}>
-        
+
         {/* 语音播放按钮 */}
         {!isInitialMessage && (
-          <button 
+          <button
             onClick={handleSpeech}
             disabled={isLoadingAudio}
             className={`absolute top-3 right-3 size-8 rounded-full bg-gradient-to-br from-[#138eec] to-[#a855f7] flex items-center justify-center transition-all active:scale-90 shadow-lg`}
@@ -140,11 +169,11 @@ const AIFormattedTextBubble: React.FC<AIFormattedTextBubbleProps> = ({
         )}
 
         <div className="text-[15px] leading-relaxed font-medium">
-          <TypewriterText 
-            content={content} 
-            enabled={isTyping} 
+          <TypewriterText
+            content={content}
+            enabled={isTyping}
             isInitial={isInitialMessage}
-            onComplete={onComplete} 
+            onComplete={onComplete}
           />
         </div>
       </div>

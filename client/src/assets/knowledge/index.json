@@ -1,23 +1,198 @@
 {
-  "version": "1.0",
+  "version": "2.0",
   "entries": [
     {
       "id": "bh_flick",
+      "title": "反手拧拉",
       "category": "actions",
-      "path": "src/assets/knowledge/actions/bh_flick.md",
-      "summary": "反手拧拉技术细节、常见问题及训练纠错建议"
+      "file": "actions/bh_flick.md",
+      "keywords": [
+        "拧拉",
+        "反手拧",
+        "台内拧",
+        "拧拉技术",
+        "张继科拧拉",
+        "反手台内",
+        "内扣",
+        "架肘"
+      ]
+    },
+    {
+      "id": "bh_drive",
+      "title": "反手拨球",
+      "category": "actions",
+      "file": "actions/bh_drive.md",
+      "keywords": [
+        "拨球",
+        "反手拨",
+        "反手快拨",
+        "反手击球",
+        "拨球技术"
+      ]
+    },
+    {
+      "id": "bh_loop",
+      "title": "反手拉球",
+      "category": "actions",
+      "file": "actions/bh_loop.md",
+      "keywords": [
+        "反手拉球",
+        "反手拉",
+        "反手弧圈",
+        "反手冲",
+        "反手弧圈球",
+        "顶肘"
+      ]
+    },
+    {
+      "id": "bh_block",
+      "title": "反手防弧圈球",
+      "category": "actions",
+      "file": "actions/bh_block.md",
+      "keywords": [
+        "反手防",
+        "防弧圈",
+        "反手防守",
+        "反手挡",
+        "快撕",
+        "反手封堵",
+        "防守"
+      ]
+    },
+    {
+      "id": "fh_drive",
+      "title": "正手攻球",
+      "category": "actions",
+      "file": "actions/fh_drive.md",
+      "keywords": [
+        "正手攻球",
+        "正手攻",
+        "正手击球",
+        "攻球",
+        "正手打"
+      ]
+    },
+    {
+      "id": "fh_loop",
+      "title": "正手拉球",
+      "category": "actions",
+      "file": "actions/fh_loop.md",
+      "keywords": [
+        "正手拉球",
+        "正手拉",
+        "正手弧圈",
+        "弧圈球",
+        "拉球",
+        "正手冲",
+        "蹬转",
+        "鞭打"
+      ]
+    },
+    {
+      "id": "fh_block",
+      "title": "正手防弧圈球",
+      "category": "actions",
+      "file": "actions/fh_block.md",
+      "keywords": [
+        "正手防",
+        "正手防守",
+        "正手挡",
+        "正手封",
+        "减力挡"
+      ]
+    },
+    {
+      "id": "serve_spin",
+      "title": "下旋发球",
+      "category": "actions",
+      "file": "actions/serve_spin.md",
+      "keywords": [
+        "下旋发球",
+        "发球",
+        "发下旋",
+        "发球旋转",
+        "切球",
+        "发球技术"
+      ]
+    },
+    {
+      "id": "hook_serve",
+      "title": "勾手发球",
+      "category": "actions",
+      "file": "actions/hook_serve.md",
+      "keywords": [
+        "勾手发球",
+        "勾手",
+        "勾式发球",
+        "侧旋发球"
+      ]
+    },
+    {
+      "id": "reverse_pendulum_serve",
+      "title": "逆旋转发球",
+      "category": "actions",
+      "file": "actions/reverse_pendulum_serve.md",
+      "keywords": [
+        "逆旋转",
+        "逆旋转发球",
+        "反手发球",
+        "张继科发球",
+        "樊振东发球"
+      ]
+    },
+    {
+      "id": "receive",
+      "title": "接发球（搓球与摆短）",
+      "category": "actions",
+      "file": "actions/receive.md",
+      "keywords": [
+        "接发球",
+        "搓球",
+        "摆短",
+        "接球",
+        "台内球",
+        "接发",
+        "吃发球"
+      ]
     },
     {
       "id": "rubber_d09c",
+      "title": "蝴蝶D09C胶皮",
       "category": "equipment",
-      "path": "src/assets/knowledge/equipment/rubbers.md",
-      "summary": "蝴蝶D09C胶皮性能参数与搭配建议"
+      "file": "equipment/rubbers.md",
+      "keywords": [
+        "D09C",
+        "胶皮",
+        "套胶",
+        "蝴蝶",
+        "器材",
+        "底板",
+        "配置",
+        "装备",
+        "搭配",
+        "价格",
+        "推荐"
+      ]
     },
     {
-      "id": "match_logic",
+      "id": "direct_logic",
+      "title": "实战表现与策略映射库",
       "category": "tactics",
-      "path": "src/assets/knowledge/tactics/direct_match_logic.md",
-      "summary": "实战表现与双向博弈策略映射库，包含反手长球、正手短球等实战建议"
+      "file": "tactics/direct_match_logic.md",
+      "keywords": [
+        "战术",
+        "实战",
+        "比赛",
+        "策略",
+        "被动",
+        "顶住",
+        "长球",
+        "短球",
+        "相持",
+        "对拉",
+        "发球抢攻",
+        "吃发球"
+      ]
     }
   ]
 }

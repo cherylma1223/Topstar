@@ -21,6 +21,7 @@ const App: React.FC = () => {
   const [currentScreen, setCurrentScreen] = useState<AppScreen>(AppScreen.HOME);
   const [prevScreen, setPrevScreen] = useState<AppScreen>(AppScreen.HOME);
   const [activeService, setActiveService] = useState<string>("当家球星");
+  const [activeServiceCategory, setActiveServiceCategory] = useState<string>("当家球星");
   const [activeIcon, setActiveIcon] = useState<string>("psychology");
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -28,20 +29,20 @@ const App: React.FC = () => {
   const [appearanceMode, setAppearanceMode] = useState<'dark' | 'light'>('dark');
   const [isAutoReadEnabled, setIsAutoReadEnabled] = useState(false);
   const [isAutoAnalyzeEnabled, setIsAutoAnalyzeEnabled] = useState(true);
-  
+
   // 新增：全局等待状态，用于控制“正在思考”
   const [isProcessing, setIsProcessing] = useState(false);
-  
+
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
   const [rawVideoUrl, setRawVideoUrl] = useState<string | null>(null);
 
   // 全局控制语音播放状态，确保切换页面或触发特定导航时能停止语音
   const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
-  
+
   // Define isSettingsFlow to determine if we are in a sub-menu flow
   // This fixes the 'isSettingsFlow' missing variable errors.
   const isSettingsFlow = currentScreen === AppScreen.SETTINGS || currentScreen === AppScreen.APPEARANCE;
-  
+
   const [history, setHistory] = useState<HistoryEntry[]>([
     { id: '1', title: '反手拧拉技术提升策略', time: '14:30', section: 'recent' },
     { id: '2', title: '正手攻球动作分析', time: '昨天', section: 'recent' },
@@ -62,7 +63,7 @@ const App: React.FC = () => {
   const getInitialMessages = useCallback((serviceTitle?: string): Message[] => {
     let welcomeContent = '您好，我是您的私人教练。请上传或拍一段打球视频，我帮您看下有什么地方可以改进。';
     let showActionCard = true;
-    
+
     if (serviceTitle === "AI 场外指导") {
       welcomeContent = '我是您的智能场外指导。给我一段比赛视频，我能帮您快速分析双方技战术特点，给出实战建议。';
     } else if (serviceTitle === "器材推荐" || serviceTitle?.includes("器材")) {
@@ -105,33 +106,64 @@ const App: React.FC = () => {
     setActiveAudioId(null); // 立即停止当前语音
     setCurrentScreen(AppScreen.HOME);
     setActiveService("当家球星");
+    setActiveServiceCategory("当家球星");
     setActiveIcon("psychology");
     setHasEngaged(false);
-    setMessages([]); 
+    setMessages([]);
     setSidebarOpen(false);
   };
 
   const handleSendMessage = async (text: string) => {
     setHasEngaged(true);
+    const userMsgId = `user-${Date.now()}`;
     const userMsg: Message = {
-      id: `user-${Date.now()}`,
+      id: userMsgId,
       sender: 'user',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       parts: [{ type: 'text', content: text }]
     };
-    
-    setMessages(prev => [...prev, userMsg]);
-    
+
+    // 我们需要更新后的消息列表来构建历史
+    const updatedMessages = [...messages, userMsg];
+    setMessages(updatedMessages);
+
     if (currentScreen === AppScreen.HOME) {
       setCurrentScreen(AppScreen.CHAT);
     }
 
-    const isGeneralService = activeService === "当家球星" || activeService === "技术动作分析" || activeService === "AI 场外指导";
+    const isGeneralService = activeServiceCategory === "当家球星" || activeServiceCategory === "技术动作分析" || activeServiceCategory === "AI 场外指导";
 
-    if (activeService === "器材推荐") {
-      setIsProcessing(true); // 开始思考
-      const response = await getAIResponse(text, EQUIPMENT_ADVISOR_INSTRUCTION);
-      setIsProcessing(false); // 结束思考
+    // 构建简化的历史记录发送给后端
+    const chatHistory = updatedMessages
+      .filter(m => m.id !== userMsgId) // 不包含当前的 userMsg，后端会单独处理 prompt
+      .map(m => {
+        // 提取消息中的文本内容
+        const textParts = m.parts
+          .filter(p => p.type === 'text')
+          .map(p => p.content)
+          .join('\n');
+
+        // 如果是 report 类型，也把关键信息转为文本
+        const reportParts = m.parts
+          .filter(p => p.type === 'report' && p.reportData)
+          .map(p => {
+            const rd = p.reportData!;
+            return `报告：${rd.techName || ''}\n问题：${rd.problems.map(pr => pr.text).join('; ')}\n建议：${rd.improvements.join('; ')}`;
+          })
+          .join('\n');
+
+        return {
+          sender: m.sender,
+          content: (textParts + '\n' + reportParts).trim()
+        };
+      })
+      .filter(h => h.content.length > 0)
+      .slice(-10); // 只取最近10条，避免 token 过长
+
+    if (activeServiceCategory === "器材推荐") {
+      setIsProcessing(true);
+      const response = await getAIResponse(text, chatHistory, EQUIPMENT_ADVISOR_INSTRUCTION);
+      setIsProcessing(false);
       const aiMsg: Message = {
         id: `ai-reply-${Date.now()}`,
         sender: 'ai',
@@ -139,14 +171,14 @@ const App: React.FC = () => {
         parts: [{ type: 'text', content: response, isTyping: true }]
       };
       setMessages(prev => [...prev, aiMsg]);
-      updateSessionTitle(text);
+      updateSessionTitle(text, updatedMessages);
       return;
     }
 
     if (isGeneralService) {
-      setIsProcessing(true); // 开始思考
-      const response = await getAIResponse(text, DEFAULT_COACH_INSTRUCTION);
-      setIsProcessing(false); // 结束思考
+      setIsProcessing(true);
+      const response = await getAIResponse(text, chatHistory, DEFAULT_COACH_INSTRUCTION);
+      setIsProcessing(false);
       const aiMsg: Message = {
         id: `ai-reply-${Date.now()}`,
         sender: 'ai',
@@ -154,7 +186,7 @@ const App: React.FC = () => {
         parts: [{ type: 'text', content: response, isTyping: true }]
       };
       setMessages(prev => [...prev, aiMsg]);
-      updateSessionTitle(text);
+      updateSessionTitle(text, updatedMessages);
       return;
     }
 
@@ -165,14 +197,14 @@ const App: React.FC = () => {
           id: `ai-reply-${Date.now()}`,
           sender: 'ai',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          parts: [{ 
-            type: 'report', 
-            reportData: { 
-              techName: activeService, 
+          parts: [{
+            type: 'report',
+            reportData: {
+              techName: activeService,
               problems: [
                 { text: "重心交换要明显，由右脚传递到左脚。", timestamp: "" },
                 { text: "挥拍要有摩擦，主要靠小臂的收缩和手腕的转动。", timestamp: "" }
-              ], 
+              ],
               improvements: [
                 "每天坚持300次空拍练习，找肌肉记忆。",
                 "多练多球，重点体会下旋拉上旋的摩擦点。"
@@ -181,7 +213,7 @@ const App: React.FC = () => {
                 { title: "樊振东正手拉球慢动作示范", url: "https://drive.google.com/file/d/13VkToMh1kvnbKRhHsLlgJ_D_WaT-Eef0/view" }
               ]
             },
-            isTyping: true 
+            isTyping: true
           }]
         };
         setMessages(prev => [...prev, aiMsg]);
@@ -189,8 +221,8 @@ const App: React.FC = () => {
     }
   };
 
-  const updateSessionTitle = (text: string) => {
-    const isFirstUserMsg = messages.filter(m => m.sender === 'user').length === 0;
+  const updateSessionTitle = (text: string, currentMessages: Message[]) => {
+    const isFirstUserMsg = currentMessages.filter(m => m.sender === 'user').length === 1;
     if (isFirstUserMsg) {
       const simplifiedTitle = text.length > 10 ? text.substring(0, 10) + "..." : text;
       handleUpdateTitle(simplifiedTitle);
@@ -198,10 +230,11 @@ const App: React.FC = () => {
   };
 
   const handleStartAnalysis = (title: string, icon: string, initialText?: string) => {
-    setActiveAudioId(null); 
+    setActiveAudioId(null);
     setActiveService(title);
+    setActiveServiceCategory(title);
     setActiveIcon(icon);
-    
+
     if (initialText) {
       setMessages([]);
       setCurrentScreen(AppScreen.CHAT);
@@ -276,11 +309,11 @@ const App: React.FC = () => {
         return <HomeScreen onStartAnalysis={handleStartAnalysis} hasEngaged={hasEngaged} onPlayVideo={playVideo} />;
       case AppScreen.CHAT:
         return (
-          <ChatScreen 
-            messages={messages} 
-            setMessages={setMessages} 
-            hasEngaged={hasEngaged} 
-            setHasEngaged={setHasEngaged} 
+          <ChatScreen
+            messages={messages}
+            setMessages={setMessages}
+            hasEngaged={hasEngaged}
+            setHasEngaged={setHasEngaged}
             onUpdateTitle={handleUpdateTitle}
             isAutoReadEnabled={isAutoReadEnabled}
             aiIcon={activeIcon}
@@ -292,9 +325,9 @@ const App: React.FC = () => {
         );
       case AppScreen.SETTINGS:
         return (
-          <SettingsScreen 
-            onBack={handleBack} 
-            onNavigateToAppearance={navigateToAppearance} 
+          <SettingsScreen
+            onBack={handleBack}
+            onNavigateToAppearance={navigateToAppearance}
             followSystem={false}
             appearanceMode={appearanceMode}
             isAutoReadEnabled={isAutoReadEnabled}
@@ -305,8 +338,8 @@ const App: React.FC = () => {
         );
       case AppScreen.APPEARANCE:
         return (
-          <AppearanceSettingsScreen 
-            onBack={handleBack} 
+          <AppearanceSettingsScreen
+            onBack={handleBack}
             appearanceMode={appearanceMode}
             setAppearanceMode={setAppearanceMode}
           />
@@ -319,27 +352,27 @@ const App: React.FC = () => {
   return (
     <div className="fixed inset-0 bg-slate-100 dark:bg-black overflow-hidden font-body select-none transition-colors duration-300">
       <div className="relative flex flex-col w-full h-full max-w-lg mx-auto bg-slate-50 dark:bg-background-dark border-x border-slate-200 dark:border-white/5 overflow-hidden shadow-2xl transition-colors duration-300">
-        
-        <Sidebar 
-          isOpen={isSidebarOpen} 
-          onClose={closeSidebar} 
-          onNavigate={(screen) => { 
-            setActiveAudioId(null); 
-            setCurrentScreen(screen); 
-            setSidebarOpen(false); 
+
+        <Sidebar
+          isOpen={isSidebarOpen}
+          onClose={closeSidebar}
+          onNavigate={(screen) => {
+            setActiveAudioId(null);
+            setCurrentScreen(screen);
+            setSidebarOpen(false);
           }}
           onSettingsClick={navigateToSettings}
           historyItems={history}
         />
-        
-        <Header 
-          onMenuClick={isSettingsFlow ? handleBack : toggleSidebar} 
+
+        <Header
+          onMenuClick={isSettingsFlow ? handleBack : toggleSidebar}
           onHomeClick={handleResetToHome}
           title={currentScreen === AppScreen.HOME ? "当家球星" : currentScreen === AppScreen.SETTINGS ? "设置" : currentScreen === AppScreen.APPEARANCE ? "外观" : activeService}
           isBackMode={isSettingsFlow}
           hideHome={isSettingsFlow}
         />
-        
+
         <main className="flex-1 relative overflow-hidden h-full">
           {renderContent()}
         </main>
@@ -361,18 +394,18 @@ const App: React.FC = () => {
                 <span className="text-white font-bold text-[12px] tracking-widest uppercase opacity-80">Video Preview</span>
                 <span className="text-white/40 text-[9px]">Embedded Source Player</span>
               </div>
-              <button 
+              <button
                 onClick={() => { setActiveVideoUrl(null); setRawVideoUrl(null); }}
                 className="size-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white active:scale-90 transition-all border border-white/10"
               >
                 <span className="material-symbols-outlined text-[24px]">close</span>
               </button>
             </div>
-            
+
             <div className="w-full h-full flex items-center justify-center p-0">
               <div className="absolute size-10 rounded-full border-2 border-white/5 border-t-primary animate-spin"></div>
-              <iframe 
-                key={activeVideoUrl} 
+              <iframe
+                key={activeVideoUrl}
                 src={activeVideoUrl}
                 className="w-full h-auto aspect-video max-h-full z-20 border-y border-white/5"
                 allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
