@@ -8,7 +8,7 @@ import ChatScreen from './components/ChatScreen.tsx';
 import ChatInput from './components/ChatInput.tsx';
 import SettingsScreen from './components/SettingsScreen.tsx';
 import AppearanceSettingsScreen from './components/AppearanceSettingsScreen.tsx';
-import { getAIResponse, EQUIPMENT_ADVISOR_INSTRUCTION, DEFAULT_COACH_INSTRUCTION } from './geminiService.ts';
+import { getAIResponse, UNIFIED_COACH_INSTRUCTION } from './geminiService.ts';
 
 interface HistoryEntry {
   id: string;
@@ -131,19 +131,17 @@ const App: React.FC = () => {
       setCurrentScreen(AppScreen.CHAT);
     }
 
-    const isGeneralService = activeServiceCategory === "当家球星" || activeServiceCategory === "技术动作分析" || activeServiceCategory === "AI 场外指导";
+    const isAIService = activeServiceCategory === "当家球星" || activeServiceCategory === "技术动作分析" || activeServiceCategory === "AI 场外指导" || activeServiceCategory === "器材推荐";
 
     // 构建简化的历史记录发送给后端
     const chatHistory = updatedMessages
       .filter(m => m.id !== userMsgId) // 不包含当前的 userMsg，后端会单独处理 prompt
       .map(m => {
-        // 提取消息中的文本内容
         const textParts = m.parts
           .filter(p => p.type === 'text')
           .map(p => p.content)
           .join('\n');
 
-        // 如果是 report 类型，也把关键信息转为文本
         const reportParts = m.parts
           .filter(p => p.type === 'report' && p.reportData)
           .map(p => {
@@ -158,26 +156,11 @@ const App: React.FC = () => {
         };
       })
       .filter(h => h.content.length > 0)
-      .slice(-10); // 只取最近10条，避免 token 过长
+      .slice(-10);
 
-    if (activeServiceCategory === "器材推荐") {
+    if (isAIService) {
       setIsProcessing(true);
-      const response = await getAIResponse(text, chatHistory, EQUIPMENT_ADVISOR_INSTRUCTION);
-      setIsProcessing(false);
-      const aiMsg: Message = {
-        id: `ai-reply-${Date.now()}`,
-        sender: 'ai',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        parts: [{ type: 'text', content: response, isTyping: true }]
-      };
-      setMessages(prev => [...prev, aiMsg]);
-      updateSessionTitle(text, updatedMessages);
-      return;
-    }
-
-    if (isGeneralService) {
-      setIsProcessing(true);
-      const response = await getAIResponse(text, chatHistory, DEFAULT_COACH_INSTRUCTION);
+      const response = await getAIResponse(text, chatHistory, UNIFIED_COACH_INSTRUCTION);
       setIsProcessing(false);
       const aiMsg: Message = {
         id: `ai-reply-${Date.now()}`,
