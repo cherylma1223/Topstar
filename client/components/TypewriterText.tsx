@@ -92,9 +92,44 @@ const TypewriterText: React.FC<TypewriterTextProps> = ({
     let vipLines: string[] = [];
 
     const flushVIPBlock = () => {
-      if (vipLines.length === 0) return;
+      // 通过后端预埋的标记判断内容是否被锁定
+      const isLocked = vipLines.some(l => l.includes('[LOCKED_VIP_CONTENT]')) || vipLines.length === 0;
+
+      // 如果是真实的 VIP 内容，清晰渲染特权卡片
+      if (!isLocked) {
+        renderedLines.push(
+          <div key={`vip-block-clear`} className="mb-2 mt-3.5 p-[1px] rounded-2xl bg-gradient-to-br from-[#eab308]/40 to-[#d97706]/20 shadow-lg relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-1 opacity-10 pointer-events-none group-hover:scale-110 group-hover:opacity-20 transition-all duration-500">
+              <span className="material-symbols-outlined text-[80px] text-[#eab308]">workspace_premium</span>
+            </div>
+            <div className="p-4 rounded-[15px] bg-[#1a1f24] border border-[#eab308]/10 relative z-10 min-h-[120px]">
+              <div className="text-[14px] font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#fef08a] to-[#d97706] mb-3 flex items-center gap-2">
+                <span className="material-symbols-outlined text-[18px] text-[#fef08a]" style={{ fontVariationSettings: "'FILL' 1" }}>stars</span>
+                {vipTitle.replace(/\(VIP专属\)/g, '').replace(/（VIP专属）/g, '').trim()}
+              </div>
+              <div className="flex flex-col gap-2.5">
+                {vipLines.map((vl, vi) => (
+                  <div key={vi} className="flex items-start gap-2.5">
+                    <span className="size-1.5 mt-2 shrink-0 rounded-full bg-gradient-to-r from-[#fef08a] to-[#d97706]"></span>
+                    <span className="text-white/90 leading-relaxed font-medium text-[14px] tracking-wide">{renderContentWithLinks(vl)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+        return;
+      }
+
+      const previewLines = vipLines
+        .filter(vl => !vl.includes('[LOCKED_VIP_CONTENT]'))
+        .map(vl => vl.trim())
+        .filter(Boolean);
+      const blurredLines = previewLines.length > 0 ? previewLines : ['························', '························', '························'];
+
+      // 如果是非 VIP（或正在加载中），渲染诱惑毛玻璃卡片
       renderedLines.push(
-        <div key={`vip-block`} className="mb-2 mt-3.5">
+        <div key={`vip-block-locked`} className="mb-2 mt-3.5">
           <div className="text-[13px] font-bold text-primary mb-2 flex items-center gap-2">
             <span className="w-1 h-3.5 bg-primary rounded-full shrink-0"></span>
             {vipTitle.replace(/\(VIP专属\)/g, '').replace(/（VIP专属）/g, '').trim()}
@@ -102,7 +137,7 @@ const TypewriterText: React.FC<TypewriterTextProps> = ({
           <div className="relative rounded-2xl overflow-hidden border border-white/[0.08] min-h-[180px]">
             {/* 模糊的假内容背景层 */}
             <div className="p-4 space-y-2 select-none min-h-[180px]" aria-hidden="true">
-              {vipLines.map((vl, vi) => (
+              {blurredLines.map((vl, vi) => (
                 <div key={vi} className="flex items-start gap-2.5">
                   <span className="size-1.5 mt-2 shrink-0 rounded-full bg-white/10"></span>
                   <span className="text-[14px] text-white/60 leading-snug font-medium blur-[6px]">{vl}</span>
@@ -129,16 +164,32 @@ const TypewriterText: React.FC<TypewriterTextProps> = ({
       vipLines = [];
     };
 
+    const cleanLine = (l: string) => {
+      const lockedPlaceholder = 'CODExLOCKEDVIPTOKEN';
+      // 1. Remove starting symbols like ###, *, -, >
+      let s = l.replace(/\[LOCKED_VIP_CONTENT\]/g, lockedPlaceholder);
+      s = s.replace(/^(#{1,6}|[*+->])\s+/, '');
+      // 2. Remove double asterisks/underscores for bold **text** -> text
+      s = s.replace(/(\*\*|__)(.*?)\1/g, '$2');
+      // 3. Remove single asterisks/underscores for italics *text* -> text
+      s = s.replace(/([*_])(.*?)\1/g, '$2');
+      // 4. Remove inline code ticks `code` -> code
+      s = s.replace(/`([^`]+)`/g, '$1');
+      s = s.replace(new RegExp(lockedPlaceholder, 'g'), '[LOCKED_VIP_CONTENT]');
+      return s;
+    };
+
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line && i < lines.length - 1) {
+      const rawLine = lines[i].trim();
+      if (!rawLine && i < lines.length - 1) {
         if (!isInsideVIPSection) {
           renderedLines.push(<div key={`space-${i}`} className="h-1"></div>);
         }
         continue;
       }
-      if (!line) continue;
+      if (!rawLine) continue;
 
+      const line = cleanLine(rawLine);
       const headerMatch = line.match(/【([^】]+)】/);
 
       if (headerMatch) {

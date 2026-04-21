@@ -1,7 +1,12 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import TypewriterText from './TypewriterText.tsx';
-import { generateSpeech, decodeBase64, decodeAudioData } from '../geminiService.ts';
+import {
+  getSharedAudioContext,
+  getSpeechAudioBuffers,
+  getTTSRequestKey,
+  type TTSRequest,
+} from '../geminiService.ts';
 
 interface AIFormattedTextBubbleProps {
   id: string;
@@ -29,20 +34,48 @@ const AIFormattedTextBubble: React.FC<AIFormattedTextBubbleProps> = ({
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const audioBufferRef = useRef<AudioBuffer | null>(null);
-  const pausedAtRef = useRef<number>(0);
+  const audioBuffersRef = useRef<AudioBuffer[] | null>(null);
+  const playbackOffsetRef = useRef<number>(0);
   const startTimeRef = useRef<number>(0);
   const isManuallyStoppedRef = useRef<boolean>(false);
+  const activeRequestKeyRef = useRef<string | null>(null);
+  const currentSegmentBaseOffsetRef = useRef<number>(0);
+  const currentSegmentOffsetRef = useRef<number>(0);
+  const totalDurationRef = useRef<number>(0);
+
+  const speechRequest: TTSRequest = {
+    contentType: 'text',
+    text: content,
+  };
+
+  const getSegmentOffsets = () => {
+    const buffers = audioBuffersRef.current || [];
+    const offsets: number[] = [];
+    let total = 0;
+
+    for (const buffer of buffers) {
+      offsets.push(total);
+      total += buffer.duration;
+    }
+
+    totalDurationRef.current = total;
+    return offsets;
+  };
 
   const stopAudio = () => {
     if (sourceRef.current) {
       try {
         isManuallyStoppedRef.current = true;
         if (audioCtxRef.current) {
-          pausedAtRef.current += audioCtxRef.current.currentTime - startTimeRef.current;
+          const elapsed = audioCtxRef.current.currentTime - startTimeRef.current;
+          playbackOffsetRef.current = Math.min(
+            totalDurationRef.current,
+            currentSegmentBaseOffsetRef.current + currentSegmentOffsetRef.current + elapsed,
+          );
         }
         sourceRef.current.stop();
       } catch (e) { }
+      sourceRef.current = null;
       setIsSpeaking(false);
     }
   };
@@ -62,10 +95,97 @@ const AIFormattedTextBubble: React.FC<AIFormattedTextBubbleProps> = ({
     };
   }, []);
 
+  useEffect(() => {
+    if (isInitialMessage) return;
+    void loadAudioBuffers(true);
+  }, [content, isInitialMessage]);
+
+  const loadAudioBuffers = async (isBackgroundPrefetch: boolean = false) => {
+    const requestKey = getTTSRequestKey(speechRequest);
+    if (activeRequestKeyRef.current === requestKey && audioBuffersRef.current?.length) {
+      return audioBuffersRef.current;
+    }
+
+    if (!isBackgroundPrefetch) {
+      setIsLoadingAudio(true);
+    }
+    try {
+      const buffers = await getSpeechAudioBuffers(speechRequest);
+      if (buffers?.length) {
+        audioBuffersRef.current = buffers;
+        activeRequestKeyRef.current = requestKey;
+        playbackOffsetRef.current = 0;
+        getSegmentOffsets();
+        return buffers;
+      }
+      return null;
+    } finally {
+      if (!isBackgroundPrefetch) {
+        setIsLoadingAudio(false);
+      }
+    }
+  };
+
+  const playFromOffset = (offsetSeconds: number) => {
+    const ctx = audioCtxRef.current;
+    const buffers = audioBuffersRef.current;
+    if (!ctx || !buffers?.length) return;
+
+    const offsets = getSegmentOffsets();
+    const totalDuration = totalDurationRef.current;
+    if (offsetSeconds >= totalDuration) {
+      offsetSeconds = 0;
+      playbackOffsetRef.current = 0;
+    }
+
+    let segmentIndex = buffers.length - 1;
+    for (let i = 0; i < buffers.length; i++) {
+      const segmentStart = offsets[i];
+      const segmentEnd = segmentStart + buffers[i].duration;
+      if (offsetSeconds < segmentEnd) {
+        segmentIndex = i;
+        break;
+      }
+    }
+
+    const segmentBaseOffset = offsets[segmentIndex] || 0;
+    const segmentOffset = Math.max(0, offsetSeconds - segmentBaseOffset);
+    const source = ctx.createBufferSource();
+    source.buffer = buffers[segmentIndex];
+    source.connect(ctx.destination);
+
+    source.onended = () => {
+      if (isManuallyStoppedRef.current) return;
+
+      const nextIndex = segmentIndex + 1;
+      if (nextIndex < buffers.length) {
+        playbackOffsetRef.current = offsets[nextIndex];
+        playFromOffset(offsets[nextIndex]);
+        return;
+      }
+
+      playbackOffsetRef.current = 0;
+      currentSegmentBaseOffsetRef.current = 0;
+      currentSegmentOffsetRef.current = 0;
+      sourceRef.current = null;
+      setIsSpeaking(false);
+      onToggleAudio(null);
+    };
+
+    isManuallyStoppedRef.current = false;
+    sourceRef.current = source;
+    currentSegmentBaseOffsetRef.current = segmentBaseOffset;
+    currentSegmentOffsetRef.current = segmentOffset;
+    startTimeRef.current = ctx.currentTime;
+    source.start(0, segmentOffset);
+    setIsSpeaking(true);
+    onToggleAudio(id);
+  };
+
   const handleSpeech = async () => {
     if (isLoadingAudio) return;
 
-    if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+    if (!audioCtxRef.current) audioCtxRef.current = getSharedAudioContext();
     const ctx = audioCtxRef.current;
     if (ctx.state === 'suspended') await ctx.resume();
 
@@ -75,73 +195,15 @@ const AIFormattedTextBubble: React.FC<AIFormattedTextBubbleProps> = ({
       return;
     }
 
-    const stripVIPContentForSpeech = (text: string): string => {
-      const lines = text.split('\n');
-      const resultLines: string[] = [];
-      let isInsideVIPSection = false;
-
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) {
-          if (!isInsideVIPSection) resultLines.push(line);
-          continue;
-        }
-
-        const headerMatch = line.match(/【([^】]+)】/);
-
-        if (headerMatch) {
-          const title = headerMatch[1];
-          isInsideVIPSection = title.includes('VIP') || title.includes('秘诀');
-        }
-
-        if (!isInsideVIPSection) {
-          resultLines.push(line);
-        }
-      }
-
-      // Strip Markdown links: [Name](URL) -> Name
-      return resultLines.join('\n').replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1');
-    };
-
-    if (!audioBufferRef.current) {
-      setIsLoadingAudio(true);
-      try {
-        const speechText = stripVIPContentForSpeech(content);
-        const base64Audio = await generateSpeech(speechText);
-        if (base64Audio) {
-          audioBufferRef.current = await decodeAudioData(decodeBase64(base64Audio), ctx, 24000, 1);
-          pausedAtRef.current = 0;
-        }
-      } catch (err) {
-        console.error("Speech generation failed", err);
-      } finally {
-        setIsLoadingAudio(false);
+    if (!audioBuffersRef.current?.length) {
+      const buffers = await loadAudioBuffers();
+      if (!buffers?.length) {
+        console.error('Speech generation failed');
+        return;
       }
     }
 
-    if (audioBufferRef.current) {
-      const buffer = audioBufferRef.current;
-      if (pausedAtRef.current >= buffer.duration) pausedAtRef.current = 0;
-
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-
-      source.onended = () => {
-        if (!isManuallyStoppedRef.current) {
-          pausedAtRef.current = 0;
-          setIsSpeaking(false);
-          onToggleAudio(null);
-        }
-      };
-
-      isManuallyStoppedRef.current = false;
-      sourceRef.current = source;
-      source.start(0, pausedAtRef.current);
-      startTimeRef.current = ctx.currentTime;
-      setIsSpeaking(true);
-      onToggleAudio(id);
-    }
+    playFromOffset(playbackOffsetRef.current);
   };
 
   return (

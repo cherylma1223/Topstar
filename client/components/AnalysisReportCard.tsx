@@ -1,7 +1,12 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { AnalysisReport } from '../types.ts';
-import { generateSpeech, decodeBase64, decodeAudioData } from '../geminiService.ts';
+import {
+  getSharedAudioContext,
+  getSpeechAudioBuffers,
+  getTTSRequestKey,
+  type TTSRequest,
+} from '../geminiService.ts';
 import TypewriterText from './TypewriterText.tsx';
 
 interface AnalysisReportCardProps { 
@@ -9,6 +14,7 @@ interface AnalysisReportCardProps {
   activeAudioId: string | null;
   onToggleAudio: (id: string | null) => void;
   report: AnalysisReport; 
+  summaryText?: string; // AI Text Summary
   isTyping?: boolean; 
   isFieldGuidance?: boolean; 
   onComplete?: () => void;
@@ -20,32 +26,69 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
   activeAudioId,
   onToggleAudio,
   report, 
+  summaryText,
   isTyping = false,
   isFieldGuidance = false,
   onComplete,
   onPlayVideo
 }) => {
-  const { techName, problems, improvements, videoLinks } = report;
+  const { techName, problems, improvements, videoLinks, summaryText: reportSummaryText } = report;
+  const activeSummaryText = summaryText || reportSummaryText;
+  const vipBlockRegex = /(?:\n|^)【(?:核心秘诀|VIP专属)[^】]*】[\s\S]*$/;
+  const vipSummaryText = activeSummaryText?.match(vipBlockRegex)?.[0]?.trim() || '';
+  const summaryBodyText = activeSummaryText?.replace(vipBlockRegex, '').trim() || '';
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [step, setStep] = useState<number>(isTyping ? 0 : 2); 
   
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const audioBufferRef = useRef<AudioBuffer | null>(null);
-  const pausedAtRef = useRef<number>(0);
+  const audioBuffersRef = useRef<AudioBuffer[] | null>(null);
+  const playbackOffsetRef = useRef<number>(0);
   const startTimeRef = useRef<number>(0);
   const isManuallyStoppedRef = useRef<boolean>(false);
+  const activeRequestKeyRef = useRef<string | null>(null);
+  const currentSegmentBaseOffsetRef = useRef<number>(0);
+  const currentSegmentOffsetRef = useRef<number>(0);
+  const totalDurationRef = useRef<number>(0);
+
+  const speechRequest: TTSRequest = {
+    contentType: 'report',
+    report: {
+      ...report,
+      summaryText: activeSummaryText,
+    },
+    isFieldGuidance,
+  };
+
+  const getSegmentOffsets = () => {
+    const buffers = audioBuffersRef.current || [];
+    const offsets: number[] = [];
+    let total = 0;
+
+    for (const buffer of buffers) {
+      offsets.push(total);
+      total += buffer.duration;
+    }
+
+    totalDurationRef.current = total;
+    return offsets;
+  };
 
   const stopAudio = () => {
     if (sourceRef.current) {
       try { 
         isManuallyStoppedRef.current = true;
         if (audioCtxRef.current) {
-          pausedAtRef.current += audioCtxRef.current.currentTime - startTimeRef.current;
+          const elapsed = audioCtxRef.current.currentTime - startTimeRef.current;
+          playbackOffsetRef.current = Math.min(
+            totalDurationRef.current,
+            currentSegmentBaseOffsetRef.current + currentSegmentOffsetRef.current + elapsed,
+          );
         }
         sourceRef.current.stop(); 
       } catch (e) {}
+      sourceRef.current = null;
       setIsSpeaking(false);
     }
   };
@@ -65,10 +108,96 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
     };
   }, []);
 
+  useEffect(() => {
+    void loadAudioBuffers(true);
+  }, [report, activeSummaryText, isFieldGuidance]);
+
+  const loadAudioBuffers = async (isBackgroundPrefetch: boolean = false) => {
+    const requestKey = getTTSRequestKey(speechRequest);
+    if (activeRequestKeyRef.current === requestKey && audioBuffersRef.current?.length) {
+      return audioBuffersRef.current;
+    }
+
+    if (!isBackgroundPrefetch) {
+      setIsLoadingAudio(true);
+    }
+    try {
+      const buffers = await getSpeechAudioBuffers(speechRequest);
+      if (buffers?.length) {
+        audioBuffersRef.current = buffers;
+        activeRequestKeyRef.current = requestKey;
+        playbackOffsetRef.current = 0;
+        getSegmentOffsets();
+        return buffers;
+      }
+      return null;
+    } finally {
+      if (!isBackgroundPrefetch) {
+        setIsLoadingAudio(false);
+      }
+    }
+  };
+
+  const playFromOffset = (offsetSeconds: number) => {
+    const ctx = audioCtxRef.current;
+    const buffers = audioBuffersRef.current;
+    if (!ctx || !buffers?.length) return;
+
+    const offsets = getSegmentOffsets();
+    const totalDuration = totalDurationRef.current;
+    if (offsetSeconds >= totalDuration) {
+      offsetSeconds = 0;
+      playbackOffsetRef.current = 0;
+    }
+
+    let segmentIndex = buffers.length - 1;
+    for (let i = 0; i < buffers.length; i++) {
+      const segmentStart = offsets[i];
+      const segmentEnd = segmentStart + buffers[i].duration;
+      if (offsetSeconds < segmentEnd) {
+        segmentIndex = i;
+        break;
+      }
+    }
+
+    const segmentBaseOffset = offsets[segmentIndex] || 0;
+    const segmentOffset = Math.max(0, offsetSeconds - segmentBaseOffset);
+    const source = ctx.createBufferSource();
+    source.buffer = buffers[segmentIndex];
+    source.connect(ctx.destination);
+
+    source.onended = () => {
+      if (isManuallyStoppedRef.current) return;
+
+      const nextIndex = segmentIndex + 1;
+      if (nextIndex < buffers.length) {
+        playbackOffsetRef.current = offsets[nextIndex];
+        playFromOffset(offsets[nextIndex]);
+        return;
+      }
+
+      playbackOffsetRef.current = 0;
+      currentSegmentBaseOffsetRef.current = 0;
+      currentSegmentOffsetRef.current = 0;
+      sourceRef.current = null;
+      setIsSpeaking(false);
+      onToggleAudio(null);
+    };
+
+    isManuallyStoppedRef.current = false;
+    sourceRef.current = source;
+    currentSegmentBaseOffsetRef.current = segmentBaseOffset;
+    currentSegmentOffsetRef.current = segmentOffset;
+    startTimeRef.current = ctx.currentTime;
+    source.start(0, segmentOffset);
+    setIsSpeaking(true);
+    onToggleAudio(id);
+  };
+
   const handleSpeech = async () => {
     if (isLoadingAudio) return;
 
-    if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+    if (!audioCtxRef.current) audioCtxRef.current = getSharedAudioContext();
     const ctx = audioCtxRef.current;
     if (ctx.state === 'suspended') await ctx.resume();
 
@@ -78,48 +207,15 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
       return;
     }
 
-    if (!audioBufferRef.current) {
-      setIsLoadingAudio(true);
-      try {
-        const pTitle = isFieldGuidance ? '技术特点' : '技术问题';
-        const iTitle = isFieldGuidance ? '战术指导' : '训练建议';
-        const speechText = `${techName || ''}。${pTitle}：${problems.map(p => p.text).join('。')}。${iTitle}：${improvements.join('。')}。`;
-        
-        const base64Audio = await generateSpeech(speechText);
-        if (base64Audio) {
-          audioBufferRef.current = await decodeAudioData(decodeBase64(base64Audio), ctx, 24000, 1);
-          pausedAtRef.current = 0;
-        }
-      } catch (err) {
-        console.error("Speech generation failed", err);
-      } finally {
-        setIsLoadingAudio(false);
+    if (!audioBuffersRef.current?.length) {
+      const buffers = await loadAudioBuffers();
+      if (!buffers?.length) {
+        console.error('Speech generation failed');
+        return;
       }
     }
 
-    if (audioBufferRef.current) {
-      const buffer = audioBufferRef.current;
-      if (pausedAtRef.current >= buffer.duration) pausedAtRef.current = 0;
-
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-      
-      source.onended = () => {
-        if (!isManuallyStoppedRef.current) {
-          pausedAtRef.current = 0;
-          setIsSpeaking(false);
-          onToggleAudio(null);
-        }
-      };
-
-      isManuallyStoppedRef.current = false;
-      sourceRef.current = source;
-      source.start(0, pausedAtRef.current);
-      startTimeRef.current = ctx.currentTime;
-      setIsSpeaking(true);
-      onToggleAudio(id);
-    }
+    playFromOffset(playbackOffsetRef.current);
   };
 
   const handleStepComplete = () => {
@@ -128,6 +224,9 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
       else onComplete?.();
     }
   };
+
+  // 决定当前卡片是否只包含 summaryText 和视频 (后端目前的数据结构就是这样)
+  const isSimpleSummaryCard = Boolean((summaryBodyText || vipSummaryText) && (!problems || problems.length === 0) && (!improvements || improvements.length === 0));
 
   const itemBoxStyles = "p-3 rounded-xl bg-[#233848]/60 dark:bg-[#233848]/60 border border-white/5 mb-1.5 last:mb-0 transition-colors duration-300 shadow-sm";
   const textStyles = "text-[14px] leading-snug text-white/90 font-medium";
@@ -139,7 +238,12 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
         <div className="flex items-center justify-between mb-2">
           {techName && (
             <h3 className="text-[15px] font-bold text-white/90 tracking-wide">
-              <TypewriterText content={techName} enabled={isTyping && step === 0} onComplete={handleStepComplete} noBullet={true} />
+              <TypewriterText
+                content={techName}
+                enabled={isTyping && step === 0}
+                onComplete={!summaryBodyText ? handleStepComplete : undefined}
+                noBullet={true}
+              />
             </h3>
           )}
           
@@ -159,8 +263,30 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
         </div>
 
         <div className="space-y-3.5">
-          {(step >= 1 || !isTyping) && (
-            <section className="animate-fade-in-up">
+          {/* 1. Summary Text (AI Text Recommendation) */}
+          {summaryBodyText && (
+            <section className="animate-fade-in-up mb-4">
+               <div className="text-[14px] leading-relaxed text-white/90">
+                 <TypewriterText 
+                   content={summaryBodyText} 
+                   enabled={isTyping && step === 0} 
+                   onComplete={() => {
+                     // 如果只是简单的 summary 卡片，直接完成；否则走下一步
+                     if (isSimpleSummaryCard) {
+                       setStep(2); // 跳过问题和建议阶段，直接显示视频
+                       onComplete?.();
+                     } else {
+                       handleStepComplete();
+                     }
+                   }} 
+                 />
+               </div>
+            </section>
+          )}
+
+          {/* 2. Structured Problems */}
+          {(step >= 1 || !isTyping) && problems && problems.length > 0 && (
+            <section className="animate-fade-in-up mt-2">
               <h4 className="text-[13px] font-bold text-primary mb-1.5 flex items-center gap-2">
                 <span className="w-1 h-3 bg-primary rounded-full shrink-0"></span>
                 {isFieldGuidance ? '技术特点' : '技术问题'}
@@ -191,8 +317,9 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
             </section>
           )}
 
-          {(step >= 2 || !isTyping) && (
-            <section className="animate-fade-in-up">
+          {/* 3. Structured Improvements */}
+          {(step >= 2 || !isTyping) && improvements && improvements.length > 0 && (
+            <section className="animate-fade-in-up mt-2">
               <h4 className="text-[13px] font-bold text-primary mb-1.5 flex items-center gap-2">
                 <span className="w-1 h-3 bg-primary rounded-full shrink-0"></span>
                 {isFieldGuidance ? '战术指导' : '训练建议'}
@@ -212,11 +339,12 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
             </section>
           )}
 
+          {/* 4. Video Demonstrations */}
           {((step >= 2 || !isTyping) && videoLinks && videoLinks.length > 0) && (
-            <section className="animate-fade-in-up">
+            <section className="animate-fade-in-up mt-3">
                <h4 className="text-[13px] font-bold text-primary mb-1.5 flex items-center gap-2">
                  <span className="w-1 h-3 bg-primary rounded-full shrink-0"></span>
-                 动作示范
+                 视频教程
                </h4>
                <div className="space-y-1.5">
                  {videoLinks.map((link, idx) => (
@@ -233,6 +361,14 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
                    </button>
                  ))}
                </div>
+            </section>
+          )}
+
+          {((step >= 2 || !isTyping) && vipSummaryText) && (
+            <section className="animate-fade-in-up mt-3">
+              <div className="text-[14px] leading-relaxed text-white/90">
+                <TypewriterText content={vipSummaryText} enabled={false} />
+              </div>
             </section>
           )}
         </div>

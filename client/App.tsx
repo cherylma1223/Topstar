@@ -8,7 +8,7 @@ import ChatScreen from './components/ChatScreen.tsx';
 import ChatInput from './components/ChatInput.tsx';
 import SettingsScreen from './components/SettingsScreen.tsx';
 import AppearanceSettingsScreen from './components/AppearanceSettingsScreen.tsx';
-import { getAIResponse, UNIFIED_COACH_INSTRUCTION } from './geminiService.ts';
+import { getAIResponseV2, UNIFIED_COACH_INSTRUCTION } from './geminiService.ts';
 
 interface HistoryEntry {
   id: string;
@@ -102,6 +102,16 @@ const App: React.FC = () => {
     }
   }, [getInitialMessages, messages.length, currentScreen, activeService]);
 
+  const getActionCoachingCardTitle = (response: Awaited<ReturnType<typeof getAIResponseV2>>) => {
+    const actionReference = response.references?.find(ref => ref.type === 'actions_doc' && ref.title?.trim());
+
+    if (response.intent === 'VIDEO_ANALYSIS') {
+      return actionReference?.title ? `${actionReference.title}技术动作诊断报告` : '技术动作诊断报告';
+    }
+
+    return actionReference?.title ? `${actionReference.title}技术指导` : '技术动作指导';
+  };
+
   const handleResetToHome = () => {
     setActiveAudioId(null); // 立即停止当前语音
     setCurrentScreen(AppScreen.HOME);
@@ -160,13 +170,39 @@ const App: React.FC = () => {
 
     if (isAIService) {
       setIsProcessing(true);
-      const response = await getAIResponse(text, chatHistory, UNIFIED_COACH_INSTRUCTION);
+      const response = await getAIResponseV2(text, chatHistory);
       setIsProcessing(false);
+      
+      const parts: MessagePart[] = [];
+      
+      // 统一化交互：优先使用聚合模式
+      // 如果有推荐视频，我们将 answerText 和 videoLinks 塞进同一个 Report Card
+      if (response.tutorialVideos && response.tutorialVideos.length > 0) {
+        parts.push({
+          type: 'report',
+          isTyping: true,
+          reportData: {
+            techName: getActionCoachingCardTitle(response),
+            summaryText: response.answerText, // 将文本内容注入作为综述
+            problems: [], // Backend 尚未返回此结构，预留
+            improvements: [], // Backend 尚未返回此结构，预留
+            videoLinks: response.tutorialVideos.map(v => ({
+              title: `[${v.platform === 'douyin' ? '抖音' : 'B站'}] ${v.title}`,
+              url: v.url
+            })),
+            variant: 'gradient'
+          }
+        });
+      } else {
+        // 退化模式：只有文本
+        parts.push({ type: 'text', content: response.answerText, isTyping: true });
+      }
+      
       const aiMsg: Message = {
         id: `ai-reply-${Date.now()}`,
         sender: 'ai',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        parts: [{ type: 'text', content: response, isTyping: true }]
+        parts: parts
       };
       setMessages(prev => [...prev, aiMsg]);
       updateSessionTitle(text, updatedMessages);
@@ -280,10 +316,16 @@ const App: React.FC = () => {
 
   const playVideo = (url: string) => {
     setActiveAudioId(null); // 点击跳转视频链接时停止语音
-    setRawVideoUrl(url);
-    const driveIdMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
-    const fileId = driveIdMatch ? driveIdMatch[1] : '13VkToMh1kvnbKRhHsLlgJ_D_WaT-Eef0';
-    setActiveVideoUrl(`https://drive.google.com/file/d/${fileId}/preview`);
+    if (!url) return;
+    
+    if (url.includes('drive.google.com')) {
+      setRawVideoUrl(url);
+      const driveIdMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+      const fileId = driveIdMatch ? driveIdMatch[1] : '13VkToMh1kvnbKRhHsLlgJ_D_WaT-Eef0';
+      setActiveVideoUrl(`https://drive.google.com/file/d/${fileId}/preview`);
+    } else {
+      window.open(url, '_blank');
+    }
   };
 
   const renderContent = () => {

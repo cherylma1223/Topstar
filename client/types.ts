@@ -31,6 +31,7 @@ export interface Message {
 
 export interface AnalysisReport {
   techName?: string;
+  summaryText?: string; // 新增：整合后的AI分析文本
   problems: ProblemDetail[];
   improvements: string[];
   videoLinks?: VideoLink[]; // 新增：参考视频链接
