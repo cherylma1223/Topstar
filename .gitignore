@@ -7,3 +7,5 @@ dist/
 backups/
 temp_update/
 old_env_check/
+*.db-shm
+*.db-wal
