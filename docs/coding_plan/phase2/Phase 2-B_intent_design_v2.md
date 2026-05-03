@@ -287,10 +287,18 @@ LLM 输出完整 schema：
 示例策略：
 
 - 如果命中“只要视频”，强制 `response_mode = RESOURCE_ONLY`
-- 如果 `task_intent = TUTORIAL` 且 `needs_explanation = false`，禁止走动作讲解模板
+- 如果 `task_intent = TUTORIAL` 且 `needs_explanation = false`，禁止走动作讲解模板，**直接短路 LLM 生成**
 - 如果低置信度且无强规则，不直接降级为教学，而改成中性 `TEXT_ONLY`
+- **前端支持检查**：Policy 不应返回前端尚未支持的模式（如 `COMPARISON_CARD`），除非该模式有明确的文本 fallback。
 
-这层的作用是：**把业务策略从 prompt 里挪出来。**
+### Stage D：兼容适配器 (Adapter)
+
+为了平滑迁移，新增 Adapter 函数作为新旧协议的桥梁：
+
+- `decisionToLegacyIntent(decision)`：从新 schema 派生旧 `IntentType`，确保后链路逻辑一致性。
+- `legacyIntentToDecision(legacyIntent)`：为旧请求补全基础 schema。
+
+**核心原则**：内部编排以 `decision` 为准，旧 `intent` 字段仅用于兼容。
 
 ---
 
@@ -417,18 +425,17 @@ Phase 2 不应再让前端通过“有没有 tutorialVideos”去推断展示类
 
 ## 11. 评估与验收
 
-### 11.1 离线评估集
+### 11.1 评估体系拆分
 
-新增 `intent_eval_set_phase2.jsonl`，至少覆盖：
+不建议把 live LLM 结果作为 CI 的唯一判断。建议拆分为两类：
 
-- 教程只要资源
-- 教程 + 简讲
-- 动作解释
-- 动作纠错
-- 器材问答
-- 器材对比
-- 器材推荐
-- 边界模糊样本
+#### 1. 确定性单元测试 (Deterministic Tests)
+- **覆盖范围**：规则命中、Policy 修正逻辑、Adapter 转换、Fallback 触发。
+- **执行方式**：纳入 CI，必须 100% 通过。
+
+#### 2. LLM 离线评估 (Offline Evaluation)
+- **覆盖范围**：教程请求（只要资源/资源+简讲）、动作诊断、器材对比等。
+- **执行方式**：通过 `intent_eval_set_phase2.jsonl` 运行，输出 Diff 和准确率报告，用于版本间效果比对。
 
 ### 11.2 核心验收指标
 
