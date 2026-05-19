@@ -9,6 +9,7 @@ import v1Router from './routes/v1';
 import v2Router from './routes/v2';
 import { startLinkHealthCheck } from './jobs/linkHealthCheck';
 import { startTutorialSyncJob } from './jobs/tutorialSyncJob';
+import { recoverStaleJobs, startAnalysisWorker } from './jobs/analysisWorker';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -47,6 +48,10 @@ app.listen(port, () => {
 
   // 启动视频教程自动同步任务（每周一 04:00）
   startTutorialSyncJob();
+
+  // 恢复中断的视频分析任务，启动分析 Worker
+  recoverStaleJobs();
+  startAnalysisWorker();
 });
 
 export default app;

@@ -9,3 +9,6 @@ temp_update/
 old_env_check/
 *.db-shm
 *.db-wal
+# 用户上传的视频文件（Phase 2-A）
+server/uploads/*
+!server/uploads/.gitkeep

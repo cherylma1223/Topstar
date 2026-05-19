@@ -36,6 +36,29 @@ db.exec(`
   );
 `);
 
+// 创建 analysis_jobs 表（视频分析任务）
+db.exec(`
+  CREATE TABLE IF NOT EXISTS analysis_jobs (
+    id                    TEXT PRIMARY KEY,
+    status                TEXT NOT NULL DEFAULT 'queued',
+    analysis_type         TEXT NOT NULL DEFAULT 'technique',
+    video_path            TEXT,
+    video_filename        TEXT,
+    video_size            INTEGER,
+    video_duration        INTEGER,
+    mime_type             TEXT,
+    report                TEXT,
+    report_schema_version TEXT DEFAULT 'v1',
+    error                 TEXT,
+    model                 TEXT,
+    gemini_file_name      TEXT,
+    attempt_count         INTEGER DEFAULT 0,
+    created_at            TEXT NOT NULL,
+    started_at            TEXT,
+    completed_at          TEXT
+  );
+`);
+
 console.log(`[DB] SQLite database ready at ${DB_PATH} (WAL mode)`);
 
 export default db;

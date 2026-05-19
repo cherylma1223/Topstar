@@ -5,11 +5,17 @@
  */
 import express from 'express';
 import { randomUUID } from 'crypto';
+import path from 'path';
+import fs from 'fs';
+import multer from 'multer';
 import { Modality } from '@google/genai';
 import { handleChatEvent, type ChatRequest } from '../orchestrator/handleChatEvent';
 import { recommendTutorials } from '../tutorials/recommendTutorials';
 import { updateTutorialStatus, getTutorial } from '../tutorials/loader';
 import { getAI, withRetry } from './v1';
+import db from '../db';
+import { enqueueAnalysisJob } from '../jobs/queue';
+
 
 const router = express.Router();
 const ttsCache = new Map<string, { expiresAt: number; audio: { mime_type: string; sample_rate: number; data: string } }>();
@@ -386,6 +392,159 @@ router.post('/tutorials/:tutorial_id/report-dead', (req, res) => {
 
   console.log(`[V2] User reported dead link: ${tutorial_id}`);
   res.json({ success: true, message: '感谢您的反馈，我们会尽快处理' });
+});
+
+// ─── 视频分析任务路由 ──────────────────────────────────────────────────────
+
+// multer 配置：保存到 server/uploads/{jobId}.{ext}
+const UPLOADS_DIR = path.join(__dirname, '../uploads');
+const upload = multer({
+  dest: UPLOADS_DIR,
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['video/mp4', 'video/quicktime', 'video/webm'];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`INVALID_MIME_TYPE:${file.mimetype}`));
+    }
+  },
+});
+
+/**
+ * POST /api/v2/analysis/jobs
+ * 上传视频文件，创建分析任务，返回 job_id
+ */
+router.post('/analysis/jobs', (req, res) => {
+  upload.single('video')(req, res, async (err) => {
+    if (err) {
+      const isFileSizeError = err.message?.includes('File too large') || err.code === 'LIMIT_FILE_SIZE';
+      const isMimeError = err.message?.startsWith('INVALID_MIME_TYPE');
+      if (isFileSizeError) {
+        return res.status(413).json({
+          success: false,
+          error: { code: 'FILE_TOO_LARGE', message: '视频文件不能超过 100MB', retryable: false },
+        });
+      }
+      if (isMimeError) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_FILE_TYPE', message: '仅支持 MP4、MOV、WebM 格式的视频', retryable: false },
+        });
+      }
+      console.error('[V2] Upload error:', err);
+      return res.status(400).json({
+        success: false,
+        error: { code: 'UPLOAD_FAILED', message: err.message, retryable: true },
+      });
+    }
+
+    const file = (req as any).file;
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'NO_FILE', message: '未收到视频文件', retryable: false },
+      });
+    }
+
+    // 推断扩展名
+    const extMap: Record<string, string> = {
+      'video/mp4': '.mp4',
+      'video/quicktime': '.mov',
+      'video/webm': '.webm',
+    };
+    const ext = extMap[file.mimetype] || path.extname(file.originalname) || '.mp4';
+    const jobId = randomUUID();
+    const newPath = path.join(UPLOADS_DIR, `${jobId}${ext}`);
+
+
+    // 重命名临时文件为 jobId.ext
+    try {
+      fs.renameSync(file.path, newPath);
+    } catch (e: any) {
+      console.error('[V2] Failed to rename upload:', e.message);
+      return res.status(500).json({
+        success: false,
+        error: { code: 'INTERNAL_ERROR', message: '文件存储失败', retryable: true },
+      });
+    }
+
+    const analysisType = (req.body?.analysis_type === 'match_strategy') ? 'match_strategy' : 'technique';
+
+    // 写入 DB
+    db.prepare(`
+      INSERT INTO analysis_jobs
+        (id, status, analysis_type, video_path, video_filename, video_size, mime_type, created_at)
+      VALUES (?, 'queued', ?, ?, ?, ?, ?, ?)
+    `).run(
+      jobId,
+      analysisType,
+      newPath,
+      file.originalname,
+      file.size,
+      file.mimetype,
+      new Date().toISOString()
+    );
+
+    // 通知队列（MVP: no-op）
+    await enqueueAnalysisJob(jobId);
+
+    console.log(`[V2] Created analysis job: ${jobId} (${analysisType}, ${file.mimetype}, ${Math.round(file.size / 1024)}KB)`);
+
+    res.json({ success: true, job_id: jobId, status: 'queued' });
+  });
+});
+
+/**
+ * GET /api/v2/analysis/jobs/:id
+ * 查询分析任务状态
+ */
+router.get('/analysis/jobs/:id', (req, res) => {
+  const { id } = req.params;
+
+  const job = db.prepare(
+    `SELECT id, status, analysis_type, report, error, created_at, started_at, completed_at FROM analysis_jobs WHERE id = ?`
+  ).get(id) as {
+    id: string;
+    status: string;
+    analysis_type: string;
+    report: string | null;
+    error: string | null;
+    created_at: string;
+    started_at: string | null;
+    completed_at: string | null;
+  } | undefined;
+
+  if (!job) {
+    return res.status(404).json({
+      success: false,
+      error: { code: 'JOB_NOT_FOUND', message: '分析任务不存在', retryable: false },
+    });
+  }
+
+  const response: any = {
+    success: true,
+    job_id: job.id,
+    status: job.status,
+    analysis_type: job.analysis_type,
+    created_at: job.created_at,
+    started_at: job.started_at,
+    completed_at: job.completed_at,
+  };
+
+  if (job.status === 'done' && job.report) {
+    try {
+      response.report = JSON.parse(job.report);
+    } catch {
+      response.report = null;
+    }
+  }
+
+  if (job.status === 'failed' && job.error) {
+    response.error = job.error;
+  }
+
+  res.json(response);
 });
 
 export default router;

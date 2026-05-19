@@ -313,12 +313,14 @@ const App: React.FC = () => {
       setSidebarOpen(true);
     }
   };
-
   const playVideo = (url: string) => {
     setActiveAudioId(null); // 点击跳转视频链接时停止语音
     if (!url) return;
     
-    if (url.includes('drive.google.com')) {
+    if (url.startsWith('blob:')) {
+      setRawVideoUrl(url);
+      setActiveVideoUrl(url);
+    } else if (url.includes('drive.google.com')) {
       setRawVideoUrl(url);
       const driveIdMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
       const fileId = driveIdMatch ? driveIdMatch[1] : '13VkToMh1kvnbKRhHsLlgJ_D_WaT-Eef0';
@@ -428,15 +430,28 @@ const App: React.FC = () => {
             </div>
 
             <div className="w-full h-full flex items-center justify-center p-0">
-              <div className="absolute size-10 rounded-full border-2 border-white/5 border-t-primary animate-spin"></div>
-              <iframe
-                key={activeVideoUrl}
-                src={activeVideoUrl}
-                className="w-full h-auto aspect-video max-h-full z-20 border-y border-white/5"
-                allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-                allowFullScreen
-                frameBorder="0"
-              ></iframe>
+              {activeVideoUrl.startsWith('blob:') ? (
+                <video
+                  key={activeVideoUrl}
+                  src={activeVideoUrl}
+                  className="w-full h-auto aspect-video max-h-full z-20 border-y border-white/5"
+                  controls
+                  autoPlay
+                  playsInline
+                />
+              ) : (
+                <>
+                  <div className="absolute size-10 rounded-full border-2 border-white/5 border-t-primary animate-spin"></div>
+                  <iframe
+                    key={activeVideoUrl}
+                    src={activeVideoUrl}
+                    className="w-full h-auto aspect-video max-h-full z-20 border-y border-white/5"
+                    allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+                    allowFullScreen
+                    frameBorder="0"
+                  ></iframe>
+                </>
+              )}
             </div>
           </div>
         )}

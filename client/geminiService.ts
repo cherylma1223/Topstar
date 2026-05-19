@@ -600,3 +600,70 @@ export async function decodeAudioData(
   }
   return buffer;
 }
+
+// ─── 视频分析任务 API（Phase 2-A）────────────────────────────────
+
+/** 错误码 → 用户友好提示 */
+const ANALYSIS_ERROR_MAP: Record<string, string> = {
+  NO_VALID_SEGMENTS:            '未识别到有效的乒乓球动作片段，请上传包含击球练习或比赛回合的视频',
+  'NO_VALID_SEGMENTS:not_table_tennis': '视频内容似乎不是乒乓球相关，请重新上传',
+  GEMINI_UPLOAD_FAILED:         '视频上传失败，请检查网络后重试',
+  GEMINI_MODEL_UNAVAILABLE:     '当前视频分析模型不可用，请检查 GEMINI_VIDEO_MODEL 配置或稍后重试',
+  GEMINI_PROCESSING_FAILED:     '视频处理失败，请稍后重试',
+  REPORT_PARSE_FAILED:          '分析结果解析失败，请重试',
+  'REPORT_PARSE_FAILED:pass1':  '片段识别失败，请重试',
+  'REPORT_PARSE_FAILED:pass2':  '分析报告生成失败，请重试',
+  TIMEOUT:                      '分析超时，请上传更短的视频（建议 ≤ 60 秒）后重试',
+};
+
+export interface AnalysisJobStatus {
+  success: boolean;
+  job_id: string;
+  status: 'queued' | 'running' | 'done' | 'failed';
+  analysis_type: string;
+  report?: any;          // AnalysisReportPayload when done
+  error?: string;        // error code when failed
+  errorMessage?: string; // friendly message
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
+/**
+ * 上传视频文件，创建分析 job
+ */
+export async function createAnalysisJob(
+  videoFile: File,
+  analysisType: 'technique' | 'match_strategy'
+): Promise<{ success: boolean; job_id: string; status: string }> {
+  const formData = new FormData();
+  formData.append('video', videoFile);
+  formData.append('analysis_type', analysisType);
+
+  const res = await fetch('/api/v2/analysis/jobs', {
+    method: 'POST',
+    body: formData,
+  });
+
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error?.code || data.error?.message || `HTTP ${res.status}`);
+  }
+  return data;
+}
+
+/**
+ * 查询 job 状态
+ */
+export async function getAnalysisJobStatus(jobId: string): Promise<AnalysisJobStatus> {
+  const res = await fetch(`/api/v2/analysis/jobs/${jobId}`);
+  const data: AnalysisJobStatus = await res.json();
+
+  // 映射友好错误消息
+  if (data.status === 'failed' && data.error) {
+    const baseError = data.error.split(':')[0];
+    data.errorMessage = ANALYSIS_ERROR_MAP[data.error] || ANALYSIS_ERROR_MAP[baseError] || '分析失败，请重试';
+  }
+
+  return data;
+}

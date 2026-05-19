@@ -9,18 +9,18 @@
 ## User Review Required
 
 > [!IMPORTANT]
-> **Gemini SDK 版本**：当前项目使用 `@google/genai` SDK。Gemini Files API（文件上传）在新版 SDK 中通过 `ai.files.upload()` 调用。需确认当前 `package.json` 中的 SDK 版本是否已支持该 API，否则需要升级。
+> **Gemini SDK 版本**：已确认。服务器安装的 `@google/genai` v1.43.0 已原生支持 `ai.files.upload()`。
 
 > [!WARNING]
-> **视频文件存储**：MVP 方案将视频文件存储在服务端本地磁盘 `server/uploads/`。这个目录需要被 `.gitignore`。如果部署在容器/Serverless 环境，需要改为云存储（S3/GCS）。请确认当前部署方式。
+> **视频文件存储**：已确认。MVP 方案将视频文件存储在服务端本地磁盘 `server/uploads/`。
 
 > [!IMPORTANT]
 > **前端 mock 替换**：`ChatScreen.tsx` 中 `handleFileUpload` 的 `setTimeout` 整块逻辑（L109-188）将被完全替换为真实的上传 + 轮询流程。"AI 场外指导" 的 mock 报告（球员 A/B 战术分析）也将被真实分析替代。
 
-## Open Questions
+## 确认事项 (Resolved)
 
-1. **模型选择**：Gemini 视频分析默认使用 `gemini-3.1-pro-preview`。这是 2026 年视频理解能力最强的模型，支持复杂的时序推理。
-2. **视频时长限制**：设计文档建议 ≤ 120 秒。是否接受这个限制？
+1. **模型选择**：默认使用 `gemini-3.1-pro-preview`。
+2. **视频时长限制**：确认为 ≤ 120 秒。
 
 ---
 

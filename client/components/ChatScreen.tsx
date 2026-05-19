@@ -5,7 +5,8 @@ import AnalysisReportCard from './AnalysisReportCard.tsx';
 import ProcessingCard from './ProcessingCard.tsx';
 import TypewriterText from './TypewriterText.tsx';
 import AIFormattedTextBubble from './AIFormattedTextBubble.tsx';
-import { generateActionImage } from '../geminiService.ts';
+import { createAnalysisJob, getAnalysisJobStatus } from '../geminiService.ts';
+import { extractFirstFrame } from '../utils/videoUtils.ts';
 
 interface ChatScreenProps {
   messages: Message[];
@@ -70,123 +71,148 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     }, 400); 
   };
 
+  // ─── 轮询 job，直到完成或超时 ───────────────────────────────────
+  const pollJobUntilDone = async (jobId: string) => {
+    const FAST_INTERVAL = 3000;   // 前 30s：每 3s 轮询
+    const SLOW_INTERVAL = 10000;  // 30s 后：每 10s 轮询
+    const TIMEOUT_MS = 10 * 60 * 1000; // 10 分钟超时
+    const startTime = Date.now();
+
+    while (true) {
+      const elapsed = Date.now() - startTime;
+      if (elapsed > TIMEOUT_MS) {
+        throw new Error('TIMEOUT');
+      }
+
+      const interval = elapsed < 30000 ? FAST_INTERVAL : SLOW_INTERVAL;
+      await new Promise(resolve => setTimeout(resolve, interval));
+
+      const jobStatus = await getAnalysisJobStatus(jobId);
+
+      if (jobStatus.status === 'done') {
+        return jobStatus.report;
+      }
+
+      if (jobStatus.status === 'failed') {
+        throw new Error(jobStatus.errorMessage || '分析失败，请重试');
+      }
+      // queued / running → 继续轮询
+    }
+  };
+
+  // ─── 渲染分析报告 ────────────────────────────────────────────────
+  const renderAnalysisReport = (report: any, analysisType: string) => {
+    const msgId = `ai-report-${Date.now()}`;
+    let finalParts: MessagePart[] = [];
+
+    const reports = report?.reports || [];
+
+    if (analysisType === 'match_strategy') {
+      const reportParts: MessagePart[] = reports.map((r: any, i: number) => ({
+        type: 'report' as const,
+        reportData: {
+          ...r,
+          variant: i === 0 ? 'blue' : 'gradient',
+        },
+        isTyping: false,
+      }));
+
+      finalParts = [
+        { type: 'text', content: '通过对视频的分析，我总结了双方的技战术特点及战术指导：', isTyping: true },
+        ...reportParts,
+      ];
+      onUpdateTitle?.(`${reports[0]?.techName || '球员 A'} vs ${reports[1]?.techName || '球员 B'} 战术分析`);
+    } else {
+      const r = reports[0] || {};
+      finalParts = [
+        { type: 'text', content: r.summaryText ? `${r.summaryText}` : '通过视频分析，我发现了以下技术要点：', isTyping: true },
+        {
+          type: 'report' as const,
+          reportData: { ...r, variant: 'gradient' },
+          isTyping: false,
+        },
+      ];
+      onUpdateTitle?.(r.techName || '技术动作分析报告');
+    }
+
+    setMessages(prev => [...prev, {
+      id: msgId,
+      sender: 'ai',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      parts: finalParts,
+    }]);
+  };
+
+  // ─── 渲染错误消息 ─────────────────────────────────────────────────
+  const renderErrorMessage = (errMsg: string) => {
+    const msgId = `ai-error-${Date.now()}`;
+    setMessages(prev => [...prev, {
+      id: msgId,
+      sender: 'ai',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      parts: [{ type: 'text', content: `⚠️ ${errMsg}`, isTyping: true }],
+    }]);
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setHasEngaged(true);
-    
+
     const userMsgId = `u-${Date.now()}`;
-    
+
+    const videoUrl = URL.createObjectURL(file);
+
     const userMsg: Message = {
       id: userMsgId,
       sender: 'user',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      parts: [{ 
-        type: 'video', 
-        videoUrl: '', 
-        duration: '00:15' 
+      parts: [{
+        type: 'video',
+        videoUrl: videoUrl,
+        coverUrl: '',
+        duration: '00:15'
       }]
     };
     setMessages(prev => [...prev, userMsg]);
-    setIsInternalProcessing(true); // 使用内部处理状态
+    setIsInternalProcessing(true);
     if (e.target) e.target.value = '';
 
-    const actionDesc = aiIcon === 'person' ? "table tennis match strategy analysis" : "table tennis forehand loop technical action";
-    
-    generateActionImage(actionDesc).then(generatedThumbnail => {
-      const fallbackThumb = 'https://img1.baidu.com/it/u=3325220246,268389528&fm=253&fmt=auto&app=138&f=JPEG?w=889&h=500';
+    // 异步截取视频首帧作为封面
+    extractFirstFrame(file).then(coverDataUrl => {
       setMessages(prev => prev.map(m => {
         if (m.id === userMsgId) {
           return {
             ...m,
-            parts: m.parts.map(p => p.type === 'video' ? { ...p, videoUrl: generatedThumbnail || fallbackThumb } : p)
+            parts: m.parts.map(p => p.type === 'video' ? { ...p, coverUrl: coverDataUrl } : p)
           };
         }
         return m;
       }));
+    }).catch(err => {
+      console.error('Failed to extract video cover', err);
     });
 
-    setTimeout(() => {
-      setIsInternalProcessing(false); // 结束内部处理状态
-      const msgId = `ai-report-${Date.now()}`;
-      let finalParts: MessagePart[] = [];
+    try {
+      // 1. 上传视频 + 创建 job
+      const analysisType = aiIcon === 'person' ? 'match_strategy' : 'technique';
+      const { job_id } = await createAnalysisJob(file, analysisType);
 
-      if (aiIcon === 'person') {
-        finalParts = [
-          { type: 'text', content: "通过对视频的分析，我总结了双方的技战术特点及战术指导：", isTyping: true },
-          { 
-            type: 'video-screenshot', 
-            screenshotUrl: 'https://lh3.googleusercontent.com/d/1gORLMaz4MA3x-b99L605iGpLUyaqHVRQ', 
-            isTyping: false 
-          },
-          { 
-            type: 'report', 
-            reportData: { 
-              techName: "球员 A", 
-              variant: 'blue',
-              problems: [
-                { text: "正手大角位控制力出色，发球抢攻果断。", timestamp: "" },
-                { text: "步伐移动迅速，反手衔接正手转换极快。", timestamp: "" }
-              ], 
-              improvements: [
-                "对手一直发你反手位长球，脚步得提前侧身准备反拉，别犹豫。",
-                "适当增加台内摆短，破坏对手上手节奏，寻找转攻机会。"
-              ] 
-            },
-            isTyping: false
-          },
-          { 
-            type: 'report', 
-            reportData: { 
-              techName: "球员 B", 
-              variant: 'gradient',
-              problems: [
-                { text: "直板横打衔接快，台内球处理非常细腻。", timestamp: "" },
-                { text: "关键球敢打敢拼，变线意图隐蔽，防守极其稳健。", timestamp: "" }
-              ], 
-              improvements: [
-                "多利用发球调动对方正手，只要对方一退台，马上变线压反手位。",
-                "减少远台对拉，尽可能在近台通过快带和落点控制解决战斗。",
-              ] 
-            },
-            isTyping: false
-          }
-        ];
-        onUpdateTitle?.("球员 A vs 球员 B 战术分析");
-      } else {
-        finalParts = [
-          { type: 'text', content: "您的正手基本功很扎实呀！通过视频慢动作回放，我发现了几处可以优化的地方：", isTyping: true },
-          { 
-            type: 'report', 
-            reportData: { 
-              techName: "正手技术诊断报告", 
-              variant: 'gradient',
-              problems: [
-                { text: "重心交换如果能更充分一些，这板球的底劲会更足。", timestamp: "00:04" },
-                { text: "引拍时手再放低一点点，击球点的控制会更精准。", timestamp: "00:07" }
-              ], 
-              improvements: [
-                "加强下肢蹬转训练，找找从右脚到左脚的力量传递感。",
-                "练习拉下旋球时，尝试从球的后中下部向上前方挥拍摩擦。"
-              ],
-              videoLinks: [
-                { title: "樊振东正手拉球慢动作示范", url: "https://drive.google.com/file/d/13VkToMh1kvnbKRhHsLlgJ_D_WaT-Eef0/view" }
-              ]
-            },
-            isTyping: false
-          }
-        ];
-        onUpdateTitle?.("关于正手攻球的动作分析");
-      }
-      
-      setMessages(prev => [...prev, { 
-        id: msgId, 
-        sender: 'ai', 
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), 
-        parts: finalParts 
-      }]);
-    }, 3500);
+      // 2. 轮询 job 状态，直到 done 或 failed
+      const report = await pollJobUntilDone(job_id);
+
+      // 3. 渲染报告
+      setIsInternalProcessing(false);
+      renderAnalysisReport(report, analysisType);
+
+    } catch (err: any) {
+      setIsInternalProcessing(false);
+      const msg = err?.message || '视频分析失败，请重试';
+      renderErrorMessage(msg);
+    }
   };
+
+
 
   return (
     <div className="flex flex-col h-full w-full relative">
@@ -329,7 +355,7 @@ const Avatar: React.FC<{ sender: 'ai' | 'user'; aiIcon?: string }> = ({ sender, 
 );
 
 const VideoPreview: React.FC<{ part: MessagePart; onPlay?: () => void }> = ({ part, onPlay }) => {
-  const isLoading = !part.videoUrl;
+  const isLoading = !part.coverUrl;
 
   return (
     <div 
@@ -340,11 +366,11 @@ const VideoPreview: React.FC<{ part: MessagePart; onPlay?: () => void }> = ({ pa
         <div className="w-full h-full flex flex-col items-center justify-center bg-slate-800/50 backdrop-blur-sm relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent w-full -translate-x-full animate-shimmer"></div>
           <div className="size-10 rounded-full border-2 border-primary/20 border-t-primary animate-spin mb-3"></div>
-          <span className="text-[10px] text-white/50 font-black tracking-[0.2em] uppercase animate-pulse">Analyzing Video...</span>
+          <span className="text-[10px] text-white/50 font-black tracking-[0.2em] uppercase animate-pulse">Loading Video...</span>
         </div>
       ) : (
         <>
-          <img src={part.videoUrl} className="w-full h-full object-cover opacity-70" alt="Thumbnail" />
+          <img src={part.coverUrl || part.videoUrl} className="w-full h-full object-cover opacity-70" alt="Thumbnail" />
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="size-16 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center group-hover:scale-110 transition-transform shadow-2xl">
               <span className="material-symbols-outlined text-white text-5xl ml-1">play_arrow</span>

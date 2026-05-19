@@ -15,6 +15,7 @@ export interface MessagePart {
   type: 'text' | 'video' | 'report' | 'processing' | 'action-card' | 'video-screenshot';
   content?: string;
   videoUrl?: string;
+  coverUrl?: string;
   screenshotUrl?: string;
   duration?: string;
   progress?: number;
