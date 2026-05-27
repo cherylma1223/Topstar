@@ -6,8 +6,7 @@
 
 | 文件 | 用途 |
 |---|---|
-| `table_tennis_action_knowledge_template.xlsx` | 给专业乒乓球教练填写的 Excel 模板。用于沉淀技术动作定义、视频识别线索、易混淆动作区分、降级规则和诊断规则。 |
-| `build_action_knowledge_template.mjs` | 重新生成上述 Excel 模板的脚本。脚本会读取应用现有动作索引，并把动作 ID 预填到模板中。 |
+| `table_tennis_action_knowledge_v1.xlsx` | 给专业乒乓球教练填写的 Excel 模板。用于沉淀技术动作定义、视频识别线索、易混淆动作区分、降级规则和诊断规则。 |
 
 ## Excel 模板怎么用
 
@@ -36,15 +35,7 @@
 
 ## 脚本用途
 
-`build_action_knowledge_template.mjs` 用于重新生成空白/半预填模板，不是读取教练填写结果的转换脚本。
-
-它会：
-
-- 读取 `client/src/assets/knowledge/index.json` 中已有的动作条目。
-- 生成包含数据字典、动作清单、识别线索、混淆矩阵、降级规则、诊断规则的 Excel 模板。
-- 输出到本目录下的 `table_tennis_action_knowledge_template.xlsx`。
-
-后续还需要另写一个解析脚本，把教练填写后的 Excel 转成服务端可读取的 JSON，例如：
+后续需要另写一个解析脚本，把教练填写后的 Excel 转成服务端可读取的 JSON，例如：
 
 ```text
 教练填写 Excel
@@ -52,15 +43,3 @@
   -> 生成 action_recognition_knowledge.json
   -> 视频分析技术识别 Pass 读取 JSON
 ```
-
-## 重新生成模板
-
-在项目根目录运行：
-
-```bash
-node client/src/assets/knowledge/0_coach_knowledge/build_action_knowledge_template.mjs
-```
-
-脚本依赖 `@oai/artifact-tool`。在 Codex 工作区环境中可直接使用对应运行时；如果在普通本地 Node 环境运行，需要先提供这个依赖或改用项目内的 Excel 生成库。
-
-重新生成会覆盖本目录下的 `table_tennis_action_knowledge_template.xlsx`。如果教练已经填写了正式版本，请先另存一份，避免覆盖。

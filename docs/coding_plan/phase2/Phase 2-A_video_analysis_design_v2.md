@@ -240,8 +240,8 @@ client/src/assets/knowledge/index.json
 ```text
 client/src/assets/knowledge/0_coach_knowledge/
   README.md
-  build_action_knowledge_template.mjs
-  table_tennis_action_knowledge_template.xlsx
+
+  table_tennis_action_knowledge_v1.xlsx
 ```
 
 用途：
@@ -297,7 +297,7 @@ client/src/assets/knowledge/0_coach_knowledge/export_action_recognition_knowledg
 输入：
 
 ```text
-table_tennis_action_knowledge_template.xlsx
+table_tennis_action_knowledge_v1.xlsx
 ```
 
 输出建议：
@@ -622,8 +622,8 @@ v2 规则：
 ```text
 client/src/assets/knowledge/0_coach_knowledge/
   README.md
-  build_action_knowledge_template.mjs
-  table_tennis_action_knowledge_template.xlsx
+
+  table_tennis_action_knowledge_v1.xlsx
 ```
 
 ### 8.2 当前职责

@@ -13,7 +13,7 @@
 | 维度 | 我方原始方案 | 第三方 v2 设计 | **融合整合方案 (本方案)** |
 |---|---|---|---|
 | **识别与诊断解耦** | 在 Pass 2 中同时进行识别与诊断，在 prompt 中注入规则。 | **彻底解耦**。新增独立的 Pass 1.5 关卡只作分类，Pass 2 只作基于该动作的诊断。 | **采纳第三方设计**。执行 Pass 1.5 独立识别，大幅减轻 Pass 2 认知负载，防止技术猜错导致诊断全错。 |
-| **规则数据源** | 直接读取并解析现有的 `actions/*.md` 教学知识库。 | 引入 Excel 模板 (`table_tennis_action_knowledge_template.xlsx`)，由教练填写识别/混淆/诊断规则并转成 JSON。 | **双轨制运行，且提供平滑 fallback 机制**：<br>1. **首选**：加载 Excel 生成的识别 JSON 规则。<br>2. **备选 (Fallback)**：若 Excel 尚未填写完成，系统自动通过 regex 抽取现有 Markdown 里的“动作要领”和“常见问题”，作为特征参考注入，确保系统开发不被内容填写进度所阻塞。 |
+| **规则数据源** | 直接读取并解析现有的 `actions/*.md` 教学知识库。 | 引入 Excel 模板 (`table_tennis_action_knowledge_v1.xlsx`)，由教练填写识别/混淆/诊断规则并转成 JSON。 | **双轨制运行，且提供平滑 fallback 机制**：<br>1. **首选**：加载 Excel 生成的识别 JSON 规则。<br>2. **备选 (Fallback)**：若 Excel 尚未填写完成，系统自动通过 regex 抽取现有 Markdown 里的“动作要领”和“常见问题”，作为特征参考注入，确保系统开发不被内容填写进度所阻塞。 |
 | **可信度与容错** | 依靠 Schema 对 ID 进行强约束。 | 引入置信度数值、Top 2 候选、混淆矩阵、视频可见度影响，设计 `confirmed` / `tentative` / `unknown` / `ambiguous` 决策树。 | **采纳第三方设计**。若置信度低于 0.55 或主动作 ID 为 `unknown`，Pass 2 将自动降级为“拍摄建议报告”，不予虚假诊断，保护产品专业形象。 |
 | **代码结构** | 全写在 `handleAnalysisJob.ts` 中。 | 建议在 `server/` 新增 `videoAnalysis/` 目录进行模块化拆分。 | **采纳模块化拆分**。将知识库加载、Pass 1.5 识别、降级决策、Pass 2 诊断逻辑彻底解耦，易于维护 and 扩展。 |
 
@@ -34,7 +34,7 @@
 ### 组件 1：编译与知识库加载层
 
 #### [NEW] [export_action_recognition_knowledge.mjs](file:///Users/yingdongma/Documents/Dev/projects/Topstar/client/src/assets/knowledge/0_coach_knowledge/export_action_recognition_knowledge.mjs)
-- 读取教练填写的 Excel 模板 `table_tennis_action_knowledge_template.xlsx`。
+- 读取教练填写的 Excel 模板 `table_tennis_action_knowledge_v1.xlsx`。
 - 校验合法性（如 `action_id` 必须在 `index.json` 中，权重范围合理等）。
 - 输出两个 JSON 文件：
   1. [action_video_analysis_knowledge.json](file:///Users/yingdongma/Documents/Dev/projects/Topstar/server/data/action_video_analysis_knowledge.json)（识别与混淆降级规则）
