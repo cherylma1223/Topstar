@@ -21,6 +21,7 @@ const BACKUP_DIR = path.join(PROJECT_ROOT, 'backups/tutorials');
 
 const NORMALIZE_SCRIPT = path.join(__dirname, 'normalize_pingpong_merged_tutorials.js');
 const IMPORT_SCRIPT = path.join(__dirname, 'importTutorials.ts');
+const BOOTSTRAP_SCRIPT = path.join(__dirname, 'bootstrapQualityScores.ts');
 
 function getTimestamp() {
     return new Date().toISOString().replace(/[:.]/g, '-');
@@ -71,6 +72,10 @@ export async function runSyncTutorials() {
         // We use npx tsx so it works regardless of how the parent process is running
         const importCmd = `npx tsx "${IMPORT_SCRIPT}"`;
         execSync(importCmd, { stdio: 'inherit', cwd: path.join(__dirname, '..') });
+
+        console.log('[Sync] Bootstrapping quality scores for new tutorials...');
+        const bootstrapCmd = `npx tsx "${BOOTSTRAP_SCRIPT}"`;
+        execSync(bootstrapCmd, { stdio: 'inherit', cwd: path.join(__dirname, '..') });
 
         console.log('[Sync] ✅ Tutorial synchronization successful!');
         return { success: true, backupPath };

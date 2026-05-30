@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { runSyncTutorials } from '../scripts/syncTutorials';
+import { runSyncTutorials } from '../scripts/0_sync-tutorials';
 
 /**
  * 视频教程自动同步定时任务

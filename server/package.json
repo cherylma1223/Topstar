@@ -8,7 +8,7 @@
     "start": "tsx index.ts",
     "build": "tsc --noEmit",
     "import-tutorials": "tsx scripts/importTutorials.ts",
-    "sync-tutorials": "tsx scripts/syncTutorials.ts",
+    "sync-tutorials": "tsx scripts/0_sync-tutorials.ts",
     "bootstrap-scores": "tsx scripts/bootstrapQualityScores.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

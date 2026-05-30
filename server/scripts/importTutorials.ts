@@ -92,7 +92,8 @@ function main() {
   importAll(data.tutorials);
 
   console.log(`[ImportTutorials] Complete: imported ${imported}, skipped ${skipped} (already exists)`);
-  console.log(`[ImportTutorials] Total records in DB: ${db.prepare('SELECT COUNT(*) as count FROM tutorial_videos').get()}`);
+  const totalCount = (db.prepare('SELECT COUNT(*) as count FROM tutorial_videos').get() as { count: number }).count;
+  console.log(`[ImportTutorials] Total records in DB: ${totalCount}`);
 }
 
 main();
