@@ -98,20 +98,20 @@ const TypewriterText: React.FC<TypewriterTextProps> = ({
       // 如果是真实的 VIP 内容，清晰渲染特权卡片
       if (!isLocked) {
         renderedLines.push(
-          <div key={`vip-block-clear`} className="mb-2 mt-3.5 p-[1px] rounded-2xl bg-gradient-to-br from-[#eab308]/40 to-[#d97706]/20 shadow-lg relative overflow-hidden group">
+          <div key={`vip-block-clear`} className="mb-2 mt-3.5 p-[1px] rounded-2xl bg-gradient-to-br from-[#138eec]/30 to-[#a855f7]/20 shadow-lg relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-1 opacity-10 pointer-events-none group-hover:scale-110 group-hover:opacity-20 transition-all duration-500">
-              <span className="material-symbols-outlined text-[80px] text-[#eab308]">workspace_premium</span>
+              <span className="material-symbols-outlined text-[80px] text-[#138eec]">workspace_premium</span>
             </div>
-            <div className="p-4 rounded-[15px] bg-[#1a1f24] border border-[#eab308]/10 relative z-10 min-h-[120px]">
-              <div className="text-[14px] font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#fef08a] to-[#d97706] mb-3 flex items-center gap-2">
-                <span className="material-symbols-outlined text-[18px] text-[#fef08a]" style={{ fontVariationSettings: "'FILL' 1" }}>stars</span>
+            <div className="p-4 rounded-[15px] bg-blue-50 dark:bg-[#1a1f24] border border-[#138eec]/15 dark:border-[#138eec]/20 relative z-10 min-h-[120px]">
+              <div className="text-[14px] font-bold text-transparent bg-clip-text bg-gradient-to-r from-[#138eec] to-[#a855f7] dark:from-[#138eec] dark:to-[#a855f7] mb-3 flex items-center gap-2">
+                <span className="material-symbols-outlined text-[18px] text-[#138eec] dark:text-[#138eec]" style={{ fontVariationSettings: "'FILL' 1" }}>stars</span>
                 {vipTitle.replace(/\(VIP专属\)/g, '').replace(/（VIP专属）/g, '').trim()}
               </div>
               <div className="flex flex-col gap-2.5">
                 {vipLines.map((vl, vi) => (
                   <div key={vi} className="flex items-start gap-2.5">
-                    <span className="size-1.5 mt-2 shrink-0 rounded-full bg-gradient-to-r from-[#fef08a] to-[#d97706]"></span>
-                    <span className="text-white/90 leading-relaxed font-medium text-[14px] tracking-wide">{renderContentWithLinks(vl)}</span>
+                    <span className="size-1.5 mt-2 shrink-0 rounded-full bg-gradient-to-r from-[#138eec] to-[#a855f7] dark:from-[#138eec] dark:to-[#a855f7]"></span>
+                    <span className="text-slate-900 dark:text-white/90 leading-relaxed font-medium text-[14px] tracking-wide">{renderContentWithLinks(vl)}</span>
                   </div>
                 ))}
               </div>
@@ -134,23 +134,23 @@ const TypewriterText: React.FC<TypewriterTextProps> = ({
             <span className="w-1 h-3.5 bg-primary rounded-full shrink-0"></span>
             {vipTitle.replace(/\(VIP专属\)/g, '').replace(/（VIP专属）/g, '').trim()}
           </div>
-          <div className="relative rounded-2xl overflow-hidden border border-white/[0.08] min-h-[180px]">
+          <div className="relative rounded-2xl overflow-hidden border border-[#138eec]/15 dark:border-white/[0.08] min-h-[180px] shadow-sm dark:shadow-none">
             {/* 模糊的假内容背景层 */}
-            <div className="p-4 space-y-2 select-none min-h-[180px]" aria-hidden="true">
+            <div className="p-4 space-y-2 select-none min-h-[180px] bg-blue-50/70 dark:bg-transparent" aria-hidden="true">
               {blurredLines.map((vl, vi) => (
                 <div key={vi} className="flex items-start gap-2.5">
-                  <span className="size-1.5 mt-2 shrink-0 rounded-full bg-white/10"></span>
-                  <span className="text-[14px] text-white/60 leading-snug font-medium blur-[6px]">{vl}</span>
+                  <span className="size-1.5 mt-2 shrink-0 rounded-full bg-blue-300/30 dark:bg-white/10"></span>
+                  <span className="text-[14px] text-blue-900/30 dark:text-white/60 leading-snug font-medium blur-[6px]">{vl}</span>
                 </div>
               ))}
             </div>
             {/* 高级遮罩层 */}
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-gradient-to-b from-[#1a2530]/70 via-[#1e2933]/85 to-[#1a2530]/70 backdrop-blur-[2px]">
-              <div className="size-10 rounded-full bg-gradient-to-br from-[#138eec]/20 to-[#a855f7]/20 border border-white/10 flex items-center justify-center mb-3">
-                <span className="material-symbols-outlined text-[20px] text-[#138eec]" style={{ fontVariationSettings: "'FILL' 1" }}>lock</span>
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-gradient-to-b from-blue-50/95 via-white to-blue-50/95 dark:from-[#1a2530]/70 dark:via-[#1e2933]/85 dark:to-[#1a2530]/70 backdrop-blur-[2px]">
+              <div className="size-10 rounded-full bg-gradient-to-br from-[#138eec]/20 to-[#a855f7]/20 border border-[#138eec]/20 dark:border-white/10 flex items-center justify-center mb-3">
+                <span className="material-symbols-outlined text-[20px] text-[#138eec] dark:text-[#138eec]" style={{ fontVariationSettings: "'FILL' 1" }}>lock</span>
               </div>
-              <p className="text-white/80 font-bold text-[13px] mb-1">VIP 专属内容</p>
-              <p className="text-white/35 text-[11px] mb-4">开通会员即可解锁教练核心秘诀</p>
+              <p className="text-slate-800 dark:text-white/80 font-bold text-[13px] mb-1">VIP 专属内容</p>
+              <p className="text-slate-500 dark:text-white/35 text-[11px] mb-4">开通会员即可解锁教练核心秘诀</p>
               <button
                 onClick={() => alert('正在前往账户升级页面...')}
                 className="text-[11px] bg-gradient-to-r from-[#138eec] to-[#a855f7] text-white px-6 py-2 rounded-full font-bold tracking-wide hover:opacity-90 active:scale-95 transition-all shadow-lg shadow-[#138eec]/20"
@@ -218,12 +218,12 @@ const TypewriterText: React.FC<TypewriterTextProps> = ({
               {title}
             </div>
             {restOfLine && (
-              <div className={`${noBullet ? 'flex items-start gap-2 pl-1 mb-1' : 'p-3 rounded-xl bg-[#233848]/60 dark:bg-[#233848]/60 border border-white/5 mb-1.5 flex items-start gap-2.5 shadow-sm relative overflow-hidden'}`}>
+              <div className={`${noBullet ? 'flex items-start gap-2 pl-1 mb-1' : 'p-3 rounded-xl bg-white dark:bg-[#233848]/60 border border-slate-200 dark:border-white/5 mb-1.5 flex items-start gap-2.5 shadow-sm relative overflow-hidden transition-colors duration-300'}`}>
                 {!noBullet && (
                   <span className="size-1.5 mt-2 shrink-0 rounded-full bg-slate-300 dark:bg-white/20"></span>
                 )}
                 <div className="flex flex-col gap-2 w-full">
-                  <span className="text-slate-700 dark:text-white/90 leading-snug font-medium text-[14px]">
+                  <span className="text-slate-900 dark:text-white/90 leading-snug font-medium text-[14px]">
                     {renderContentWithLinks(restOfLine)}
                   </span>
                 </div>
@@ -244,13 +244,13 @@ const TypewriterText: React.FC<TypewriterTextProps> = ({
       renderedLines.push(
         <div
           key={`line-${i}`}
-          className={`${noBullet ? 'flex items-start gap-2 pl-1 mb-1' : 'p-3 rounded-xl bg-[#233848]/60 dark:bg-[#233848]/60 border border-white/5 mb-1.5 flex items-start gap-2.5 shadow-sm relative overflow-hidden'}`}
+          className={`${noBullet ? 'flex items-start gap-2 pl-1 mb-1' : 'p-3 rounded-xl bg-white dark:bg-[#233848]/60 border border-slate-200 dark:border-white/5 mb-1.5 flex items-start gap-2.5 shadow-sm relative overflow-hidden transition-colors duration-300'}`}
         >
           {!noBullet && (
             <span className="size-1.5 mt-2 shrink-0 rounded-full bg-slate-300 dark:bg-white/20"></span>
           )}
           <div className="flex flex-col gap-2 w-full">
-            <span className="text-slate-700 dark:text-white/90 leading-snug font-medium text-[14px]">
+            <span className="text-slate-900 dark:text-white/90 leading-snug font-medium text-[14px]">
               {renderContentWithLinks(line)}
             </span>
           </div>

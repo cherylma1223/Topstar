@@ -283,15 +283,15 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
                     />
                   )}
                   {part.type === 'action-card' && (
-                    <div className="w-full p-5 rounded-[24px] bg-[#16222c] border border-white/5 shadow-2xl animate-fade-in-up">
-                      <p className="text-white font-bold text-[13px] mb-4 ml-1 opacity-60">上传视频</p>
+                    <div className="w-full p-5 rounded-[24px] bg-white dark:bg-[#16222c] border border-slate-200 dark:border-white/5 shadow-2xl animate-fade-in-up transition-colors duration-300">
+                      <p className="text-slate-900 dark:text-white font-bold text-[13px] mb-4 ml-1 opacity-70">上传视频</p>
                       <div className="flex gap-4">
                         <button 
                           onClick={() => {
                             onToggleAudio(null);
                             selectFileInputRef.current?.click();
                           }} 
-                          className="flex-1 h-28 bg-[#1E4064] rounded-2xl flex flex-col items-center justify-center gap-2 text-white font-bold text-xs active:scale-95 transition-all group"
+                          className="flex-1 h-28 bg-[#e6f0fa] dark:bg-[#1E4064] rounded-2xl flex flex-col items-center justify-center gap-2 text-[#1e4064] dark:text-white font-bold text-xs active:scale-95 transition-all group"
                         >
                           <span className="material-symbols-outlined text-[32px] group-hover:scale-110 transition-transform">image</span>
                           <span>选择视频</span>
@@ -321,14 +321,14 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
               {isInternalProcessing ? (
                 <ProcessingCard />
               ) : (
-                <div className="p-4 rounded-2xl rounded-tl-none bg-slate-100 dark:bg-bubble-ai border border-slate-200 dark:border-white/5 shadow-md w-fit">
+                <div className="p-4 rounded-2xl rounded-tl-none bg-white dark:bg-bubble-ai border border-slate-200 dark:border-white/5 shadow-md w-fit">
                   <div className="flex items-center gap-2 pr-2">
                     <div className="flex gap-1">
                       <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]"></div>
                       <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]"></div>
                       <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce"></div>
                     </div>
-                    <span className="text-[13px] text-slate-500 dark:text-white/50 font-medium whitespace-nowrap">正在思考...</span>
+                    <span className="text-[13px] text-slate-700 dark:text-white/50 font-medium whitespace-nowrap">正在思考...</span>
                   </div>
                 </div>
               )}
@@ -348,7 +348,7 @@ const Avatar: React.FC<{ sender: 'ai' | 'user'; aiIcon?: string }> = ({ sender, 
       </div>
     ) : (
       <div className="size-9 rounded-full bg-gradient-to-br from-primary to-purple-500 p-[1px] shadow-md shadow-primary/10">
-        <div className="w-full h-full rounded-full bg-[#101a22] flex items-center justify-center text-[11px] font-bold text-white">樊</div>
+        <div className="w-full h-full rounded-full bg-white dark:bg-[#101a22] flex items-center justify-center text-[11px] font-bold text-slate-900 dark:text-white transition-colors duration-300">樊</div>
       </div>
     )}
   </div>

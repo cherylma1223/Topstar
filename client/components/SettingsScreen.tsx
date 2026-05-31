@@ -37,7 +37,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({
           <div className="flex-1 min-w-0">
             <h2 className="text-slate-900 dark:text-white font-bold text-lg truncate tracking-tight">樊振东</h2>
             <div className="flex items-center gap-3 mt-1">
-              <span className="text-slate-500 dark:text-text-secondary text-[13px] font-medium opacity-80">剩余积分：100</span>
+              <span className="text-slate-700 dark:text-text-secondary text-[13px] font-medium opacity-80">剩余积分：100</span>
               <button className="flex items-center gap-0.5 text-primary dark:text-blue-400 text-[13px] font-bold hover:underline active:opacity-70 transition-all">
                 充值 <span className="material-symbols-outlined text-[14px]">chevron_right</span>
               </button>
@@ -139,7 +139,7 @@ const SettingsItem: React.FC<{ icon: string, label: string, value?: string, show
         {icon}
       </span>
     </div>
-    <span className="flex-1 text-left text-[15px] text-slate-800 dark:text-white/80 font-medium">{label}</span>
+    <span className="flex-1 text-left text-[15px] text-slate-900 dark:text-white/80 font-medium">{label}</span>
     {value && (
       <span className="text-[13px] text-slate-400 dark:text-white/30 font-medium mr-1">{value}</span>
     )}
@@ -173,7 +173,7 @@ const SettingsToggle: React.FC<{
           {icon}
         </span>
       </div>
-      <span className="flex-1 text-left text-[15px] text-slate-800 dark:text-white/80 font-medium">{label}</span>
+      <span className="flex-1 text-left text-[15px] text-slate-900 dark:text-white/80 font-medium">{label}</span>
       <button 
         onClick={handleToggle}
         className={`w-11 h-6 rounded-full transition-all relative ${isChecked ? 'bg-primary' : 'bg-slate-200 dark:bg-white/10'}`}

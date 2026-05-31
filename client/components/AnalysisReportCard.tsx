@@ -228,16 +228,16 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
   // 决定当前卡片是否只包含 summaryText 和视频 (后端目前的数据结构就是这样)
   const isSimpleSummaryCard = Boolean((summaryBodyText || vipSummaryText) && (!problems || problems.length === 0) && (!improvements || improvements.length === 0));
 
-  const itemBoxStyles = "p-3 rounded-xl bg-[#233848]/60 dark:bg-[#233848]/60 border border-white/5 mb-1.5 last:mb-0 transition-colors duration-300 shadow-sm";
-  const textStyles = "text-[14px] leading-snug text-white/90 font-medium";
+  const itemBoxStyles = "p-3 rounded-xl bg-white dark:bg-[#233848]/60 border border-slate-200 dark:border-white/5 mb-1.5 last:mb-0 transition-colors duration-300 shadow-sm";
+  const textStyles = "text-[14px] leading-snug text-slate-900 dark:text-white/90 font-medium";
 
   return (
     <div className="w-full animate-fade-in-up">
-      <div className="p-4 bg-[#1e2933] rounded-[24px] border border-white/5 shadow-2xl relative overflow-hidden">
+      <div className="p-4 bg-white dark:bg-[#1e2933] rounded-[24px] border border-slate-200 dark:border-white/5 shadow-md dark:shadow-2xl relative overflow-hidden transition-colors duration-300">
         
         <div className="flex items-center justify-between mb-2">
           {techName && (
-            <h3 className="text-[15px] font-bold text-white/90 tracking-wide">
+            <h3 className="text-[15px] font-bold text-slate-900 dark:text-white/90 tracking-wide">
               <TypewriterText
                 content={techName}
                 enabled={isTyping && step === 0}
@@ -250,7 +250,7 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
           <button 
             onClick={handleSpeech}
             disabled={isLoadingAudio}
-            className={`size-8 rounded-full flex items-center justify-center transition-all bg-gradient-to-br from-[#138eec] to-[#a855f7] active:scale-95 shadow-lg border border-white/10`}
+            className={`size-8 rounded-full flex items-center justify-center transition-all bg-gradient-to-br from-[#138eec] to-[#a855f7] active:scale-95 shadow-lg border border-transparent dark:border-white/10`}
           >
             {isLoadingAudio ? (
               <div className="size-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -266,7 +266,7 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
           {/* 1. Summary Text (AI Text Recommendation) */}
           {summaryBodyText && (
             <section className="animate-fade-in-up mb-4">
-               <div className="text-[14px] leading-relaxed text-white/90">
+               <div className="text-[14px] leading-relaxed text-slate-900 dark:text-white/90">
                  <TypewriterText 
                    content={summaryBodyText} 
                    enabled={isTyping && step === 0} 
@@ -295,7 +295,7 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
                 {problems.map((prob, idx) => (
                   <div key={idx} className={itemBoxStyles}>
                     <div className="flex gap-2.5 items-start">
-                      <span className="size-1.5 rounded-full bg-white/20 mt-1.5 shrink-0"></span>
+                      <span className="size-1.5 rounded-full bg-slate-300 dark:bg-white/20 mt-1.5 shrink-0"></span>
                       <div className="flex flex-col gap-2 flex-1">
                         <div className={textStyles}>
                           <TypewriterText content={prob.text} enabled={isTyping && step === 1 && idx === 0} onComplete={idx === problems.length - 1 ? handleStepComplete : undefined} noBullet={true} />
@@ -328,7 +328,7 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
                 {improvements.map((imp, idx) => (
                   <div key={idx} className={itemBoxStyles}>
                     <div className="flex gap-2.5 items-start">
-                      <span className="size-1.5 rounded-full bg-white/20 mt-1.5 shrink-0"></span>
+                      <span className="size-1.5 rounded-full bg-slate-300 dark:bg-white/20 mt-1.5 shrink-0"></span>
                       <div className={textStyles}>
                         <TypewriterText content={imp} enabled={isTyping && step === 2 && idx === 0} onComplete={idx === improvements.length - 1 ? handleStepComplete : undefined} noBullet={true} />
                       </div>
@@ -351,13 +351,13 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
                    <button 
                      key={idx}
                      onClick={() => onPlayVideo?.(link.url)}
-                     className="w-full flex items-center gap-3 p-2.5 bg-[#233848]/60 hover:bg-primary/10 rounded-xl border border-white/5 transition-all group active:scale-[0.98]"
+                     className="w-full flex items-center gap-3 p-2.5 bg-white dark:bg-[#233848]/60 hover:bg-primary/5 dark:hover:bg-primary/10 rounded-xl border border-slate-200 dark:border-white/5 transition-all group active:scale-[0.98]"
                    >
                      <div className="size-8 rounded-lg bg-primary/20 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all shadow-inner">
                        <span className="material-symbols-outlined text-[16px]">play_circle</span>
                      </div>
-                     <span className="text-[14px] font-bold text-white/90 flex-1 text-left truncate tracking-tight">{link.title}</span>
-                     <span className="material-symbols-outlined text-white/10 text-[16px] group-hover:text-primary transition-colors">chevron_right</span>
+                     <span className="text-[14px] font-bold text-slate-900 dark:text-white/90 flex-1 text-left truncate tracking-tight">{link.title}</span>
+                     <span className="material-symbols-outlined text-slate-300 dark:text-white/10 text-[16px] group-hover:text-primary transition-colors">chevron_right</span>
                    </button>
                  ))}
                </div>
@@ -366,7 +366,7 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
 
           {((step >= 2 || !isTyping) && vipSummaryText) && (
             <section className="animate-fade-in-up mt-3">
-              <div className="text-[14px] leading-relaxed text-white/90">
+              <div className="text-[14px] leading-relaxed text-slate-900 dark:text-white/90">
                 <TypewriterText content={vipSummaryText} enabled={false} />
               </div>
             </section>

@@ -210,7 +210,7 @@ const AIFormattedTextBubble: React.FC<AIFormattedTextBubbleProps> = ({
     <div className="relative group/bubble max-w-full animate-fade-in-up">
       <div className={`
         ${isStructured ? 'p-4' : 'p-5'} 
-        pr-12 rounded-2xl border bg-white dark:bg-[#1e2933] text-slate-700 dark:text-white/90 border-slate-200 dark:border-white/5 rounded-tl-none shadow-sm transition-all hover:shadow-md relative
+        pr-12 rounded-2xl border bg-white dark:bg-[#1e2933] text-slate-900 dark:text-white/90 border-slate-200 dark:border-white/5 rounded-tl-none shadow-sm transition-all hover:shadow-md relative
       `}>
 
         {/* 语音播放按钮 */}

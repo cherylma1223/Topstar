@@ -24,7 +24,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onStartAnalysis, hasEngaged, on
         {/* 技术分享 */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-3 px-1">
-            <h3 className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <span 
                 className="material-symbols-outlined text-primary text-lg drop-shadow-[0_0_10px_rgba(19,142,236,0.9)] transition-all duration-500"
                 style={{ fontVariationSettings: "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24" }}
@@ -58,7 +58,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onStartAnalysis, hasEngaged, on
 
         {/* AI教练板块 */}
         <div className="mb-4 px-1">
-          <h3 className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <span 
               className="material-symbols-outlined text-primary text-lg drop-shadow-[0_0_10px_rgba(19,142,236,0.9)] transition-all duration-500"
               style={{ fontVariationSettings: "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24" }}
@@ -128,7 +128,7 @@ const ActionCard: React.FC<{
     </div>
     <div className="flex-1 min-w-0">
       <h3 className="text-lg font-bold text-slate-900 dark:text-white/95">{title}</h3>
-      <p className="text-xs text-slate-500 dark:text-text-secondary mt-1 font-light truncate">{desc}</p>
+      <p className="text-xs text-slate-700 dark:text-text-secondary mt-1 font-light truncate">{desc}</p>
     </div>
     <span className="material-symbols-outlined text-slate-300 dark:text-white/10 group-hover:text-primary dark:group-hover:text-white/40 transition-colors">arrow_forward_ios</span>
   </button>

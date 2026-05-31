@@ -35,7 +35,7 @@ const ProcessingCard: React.FC<ProcessingCardProps> = ({ progress: externalProgr
   const phaseLabel = getPhaseLabel(progress);
 
   return (
-    <div className="bg-slate-100 dark:bg-bubble-ai text-slate-800 dark:text-white/90 p-5 rounded-2xl rounded-tl-none shadow-md dark:shadow-xl border border-slate-200 dark:border-white/5 relative overflow-hidden w-full group transition-colors">
+    <div className="bg-white dark:bg-bubble-ai text-slate-900 dark:text-white/90 p-5 rounded-2xl rounded-tl-none shadow-md dark:shadow-xl border border-slate-200 dark:border-white/5 relative overflow-hidden w-full group transition-colors">
       <div className="absolute -top-10 -right-10 w-40 h-40 bg-primary/5 dark:bg-primary/10 rounded-full blur-3xl pointer-events-none group-hover:bg-primary/10 dark:group-hover:bg-primary/20 transition-colors"></div>
       
       <div className="flex items-center gap-3 mb-5 relative z-10">
@@ -45,7 +45,7 @@ const ProcessingCard: React.FC<ProcessingCardProps> = ({ progress: externalProgr
         </div>
         <div>
           <p className="text-sm font-bold text-slate-900 dark:text-white tracking-wide">正在分析您的视频动作，请耐心等待...</p>
-          <p className="text-[11px] text-slate-500 dark:text-white/40 mt-0.5 transition-all duration-500">{phaseLabel}</p>
+          <p className="text-[11px] text-slate-700 dark:text-white/40 mt-0.5 transition-all duration-500">{phaseLabel}</p>
         </div>
       </div>
 

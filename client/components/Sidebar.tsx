@@ -101,10 +101,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onNavigate, onSettin
         <div className="px-4 py-2.5 border-t border-slate-100 dark:border-white/5 bg-slate-50 dark:bg-background-dark/40 pb-[calc(0.6rem+env(safe-area-inset-bottom))]">
           <div className="flex items-center gap-3 p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer group">
             <div className="size-8 rounded-full bg-gradient-to-br from-primary to-purple-500 p-[1px] shadow-md shadow-primary/10">
-              <div className="w-full h-full rounded-full bg-slate-100 dark:bg-surface-dark flex items-center justify-center text-[10px] font-bold text-slate-800 dark:text-white group-hover:bg-primary/20 transition-colors">樊</div>
+              <div className="w-full h-full rounded-full bg-slate-100 dark:bg-surface-dark flex items-center justify-center text-[10px] font-bold text-slate-900 dark:text-white group-hover:bg-primary/20 transition-colors">樊</div>
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-semibold text-slate-800 dark:text-white truncate tracking-wide">樊振东</div>
+              <div className="text-[13px] font-semibold text-slate-900 dark:text-white truncate tracking-wide">樊振东</div>
             </div>
             <button 
               onClick={onSettingsClick}
@@ -125,7 +125,7 @@ const HistoryItem: React.FC<{ title: string; time: string; onClick: () => void }
     className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-white/5 active:bg-slate-200 dark:active:bg-white/10 transition-all flex items-center justify-between gap-3 group overflow-hidden"
   >
     <div className="flex-1 min-w-0">
-      <h4 className="text-[13px] font-medium text-slate-600 dark:text-white/70 group-hover:text-slate-900 dark:group-hover:text-white transition-colors truncate leading-relaxed">
+      <h4 className="text-[13px] font-medium text-slate-700 dark:text-white/70 group-hover:text-slate-900 dark:group-hover:text-white transition-colors truncate leading-relaxed">
         {title}
       </h4>
     </div>

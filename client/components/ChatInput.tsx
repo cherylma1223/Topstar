@@ -91,12 +91,12 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSend, placeholder = "请输入�
   };
 
   return (
-    <div className="w-full bg-[#101a22] border-t border-white/5 px-4 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))] z-[100] shadow-[0_-10px_40px_rgba(0,0,0,0.4)] shrink-0 relative">
+    <div className="w-full bg-white dark:bg-[#101a22] border-t border-slate-200 dark:border-white/5 px-4 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))] z-[100] shadow-[0_-10px_40px_rgba(0,0,0,0.05)] dark:shadow-[0_-10px_40px_rgba(0,0,0,0.4)] shrink-0 relative transition-colors duration-300">
       
       {/* 实时语音转文字预览气泡：直接显示识别到的文字 */}
       {isRecording && (
         <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-6 w-[88%] max-w-sm animate-in fade-in slide-in-from-bottom-2 duration-200">
-          <div className="bg-[#1e2933]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-4 shadow-2xl relative">
+          <div className="bg-white/95 dark:bg-[#1e2933]/95 backdrop-blur-xl border border-slate-200 dark:border-white/10 rounded-2xl p-4 shadow-2xl relative transition-colors">
             <div className="flex items-center gap-3 mb-2 opacity-50">
               <div className="flex gap-0.5 items-end h-3">
                 {[0.4, 0.7, 1.0, 0.6, 0.8].map((h, i) => (
@@ -107,25 +107,25 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSend, placeholder = "请输入�
                   />
                 ))}
               </div>
-              <span className="text-[10px] font-bold tracking-widest uppercase text-white/80">正在听你说话...</span>
+              <span className="text-[10px] font-bold tracking-widest uppercase text-slate-500 dark:text-white/80">正在听你说话...</span>
             </div>
-            <p className="text-white/90 text-[15px] font-medium leading-relaxed min-h-[1.5em]">
+            <p className="text-slate-800 dark:text-white/90 text-[15px] font-medium leading-relaxed min-h-[1.5em]">
               {transcription || '...'}
             </p>
             {/* 气泡小尾巴 */}
-            <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#1e2933] border-r border-b border-white/10 rotate-45"></div>
+            <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white dark:bg-[#1e2933] border-r border-b border-slate-200 dark:border-white/10 rotate-45"></div>
           </div>
         </div>
       )}
 
       <div className="flex items-center gap-3 max-w-lg mx-auto h-[48px]">
         {/* 左侧功能按钮：添加 */}
-        <button className="text-white/40 hover:text-white transition-colors flex-shrink-0 active:scale-90">
+        <button className="text-slate-400 hover:text-slate-600 dark:text-white/40 dark:hover:text-white transition-colors flex-shrink-0 active:scale-90">
           <span className="material-symbols-outlined text-[28px]">add_circle</span>
         </button>
 
         {/* 输入区主容器 */}
-        <div className={`flex-1 flex items-center bg-[#1e2933] border border-white/10 rounded-xl transition-all overflow-hidden h-full ${isRecording ? 'border-primary/50 ring-1 ring-primary/20' : ''}`}>
+        <div className={`flex-1 flex items-center bg-slate-100 dark:bg-[#1e2933] border border-slate-200 dark:border-white/10 rounded-xl transition-all overflow-hidden h-full ${isRecording ? 'border-primary/50 ring-1 ring-primary/20' : ''}`}>
           
           {isVoiceMode ? (
             <div className="flex-1 flex items-center h-full">
@@ -137,15 +137,15 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSend, placeholder = "请输入�
                 onTouchEnd={handleVoiceEnd}
                 className={`flex-1 h-full text-[15px] font-bold transition-all flex items-center justify-center gap-2 select-none
                   ${isRecording 
-                    ? 'bg-white/5 text-white/90 shadow-inner' 
-                    : 'text-white/70 active:bg-white/5'}`}
+                    ? 'bg-black/5 dark:bg-white/5 text-slate-800 dark:text-white/90 shadow-inner' 
+                    : 'text-slate-600 dark:text-white/70 active:bg-black/5 dark:active:bg-white/5'}`}
               >
                 按住 说话
               </button>
               
               <button 
                 onClick={() => setIsVoiceMode(false)}
-                className="w-12 h-full flex items-center justify-center text-white/40 hover:text-white transition-colors border-l border-white/5"
+                className="w-12 h-full flex items-center justify-center text-slate-400 hover:text-slate-600 dark:text-white/40 dark:hover:text-white transition-colors border-l border-slate-200/60 dark:border-white/5"
               >
                 <span className="material-symbols-outlined text-[22px]">keyboard</span>
               </button>
@@ -158,12 +158,12 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSend, placeholder = "请输入�
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                className="bg-transparent border-none text-white text-[15px] placeholder-white/20 focus:ring-0 w-full p-0 leading-tight" 
+                className="bg-transparent border-none text-slate-800 dark:text-white text-[15px] placeholder-slate-400 dark:placeholder-white/20 focus:ring-0 w-full p-0 leading-tight" 
                 placeholder={placeholder} 
               />
               <button 
                 onClick={() => setIsVoiceMode(true)}
-                className="ml-2 text-white/40 hover:text-white transition-colors active:scale-90"
+                className="ml-2 text-slate-400 hover:text-slate-600 dark:text-white/40 dark:hover:text-white transition-colors active:scale-90"
               >
                 <span className="material-symbols-outlined text-[22px]">mic</span>
               </button>
