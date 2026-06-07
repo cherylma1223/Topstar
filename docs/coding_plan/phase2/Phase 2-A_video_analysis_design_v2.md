@@ -4,6 +4,21 @@
 
 ---
 
+## 更新日志
+
+| 日期 | 变更 | 说明 |
+|---|---|---|
+| 2026-06-07 | 更新当前 Excel 填写状态 | 补充 `table_tennis_action_knowledge_v1.xlsx` 的审查结果：11 个动作、44 条识别线索、8 条混淆规则、3 条降级规则、29 条诊断规则。 |
+| 2026-06-07 | 增加规则质量门槛 | 明确进入工程实现前需要修正 `followup` 非法 phase、清理 `🐧不确定 / 需要教练确认 / 示例`、补充降级规则、补齐 `receive` 混淆矩阵、增强发球类规则。 |
+| 2026-06-07 | 明确 Markdown 与 Excel 边界 | 将 `actions/*.md` 明确为用户教学输出内容源，不作为正式视频识别规则来源；视频识别以 Excel 转换出的结构化 JSON 为准。 |
+| 2026-06-07 | 强化 Excel -> JSON 校验要求 | 补充 phase / weight / priority / rule_type 枚举校验、重复 `issue_id` 校验、重复混淆 pair 校验、未确认标记 strict 检查。 |
+| 2026-06-07 | 更新分阶段计划 | 将“请教练填写 3-5 个核心动作”改为“教练已填 11 个动作，下一步是清洗和补强”。 |
+| 2026-06-07 | **v2 Excel 审核通过** | 教练已提交 `table_tennis_action_knowledge_v2.xlsx`：13 个动作（+`fh_flick`/`serve_nospin`）、54 条识别线索、17 对混淆矩阵、13 条降级规则、35 条诊断规则。v1 中标注的质量门槛问题（非法 phase、降级规则偏少、`receive` 缺混淆矩阵等）已在 v2 中基本解决。知识数据已达到启动全链路工程开发的质量标准。 |
+| 2026-06-07 | 更新知识源文件引用 | 全文将 Excel 数据源引用从 `_v1.xlsx` 更新为 `_v2.xlsx`；同步标记需要新增 `fh_flick`、`serve_nospin` 到 `index.json` 和 `actions/*.md`。 |
+| 2026-06-07 | 更新 Markdown fallback 定位 | 由于 v2 Excel 已全面覆盖 13 个动作的识别/诊断规则，Markdown fallback 降级为“开发调试用途”，不再作为生产环境的必要保障路径。 |
+
+---
+
 ## 1. 背景
 
 Phase 2-A v1 已经把视频分析从前端 mock 推进到真实后端任务：
@@ -230,7 +245,7 @@ client/src/assets/knowledge/index.json
 短期规则：
 
 - 不由 Excel 自动生成。
-- 不作为视频识别规则的唯一来源。
+- 不作为正式视频识别规则来源。视频识别应以 `0_coach_knowledge/*.xlsx` 转换出的结构化 JSON 为准。
 - 不在视频识别 prompt 中整篇塞入，只可按需摘取动作标题、关键词或少量要点。
 
 ### 5.2 教练结构化识别知识
@@ -241,7 +256,8 @@ client/src/assets/knowledge/index.json
 client/src/assets/knowledge/0_coach_knowledge/
   README.md
 
-  table_tennis_action_knowledge_v1.xlsx
+  table_tennis_action_knowledge_v1.xlsx   ← 初始版本（11 个动作，已归档）
+  table_tennis_action_knowledge_v2.xlsx   ← 当前版本（13 个动作，生产使用）
 ```
 
 用途：
@@ -297,7 +313,7 @@ client/src/assets/knowledge/0_coach_knowledge/export_action_recognition_knowledg
 输入：
 
 ```text
-table_tennis_action_knowledge_v1.xlsx
+table_tennis_action_knowledge_v2.xlsx
 ```
 
 输出建议：
@@ -312,6 +328,57 @@ server/data/action_diagnosis_rules.json
 ```text
 server/data/action_video_analysis_knowledge.json
 ```
+
+### 5.5 当前 Excel 填写状态与质量门槛
+
+截至 2026-06-07，教练已提交两个版本：
+
+```text
+client/src/assets/knowledge/0_coach_knowledge/table_tennis_action_knowledge_v1.xlsx  ← 已归档
+client/src/assets/knowledge/0_coach_knowledge/table_tennis_action_knowledge_v2.xlsx  ← 当前版本
+```
+
+#### V1 → V2 增量对比
+
+| 维度 | V1 | V2 | 增量 |
+|------|----|----|------|
+| 动作清单 | 11 个动作 | **13 个动作** | +`fh_flick`(正手挑打), +`serve_nospin`(不转发球) |
+| 识别线索 | 44 条 | **54 条** | +10 条（挑打 5 条 + 不转发球 4 条 + 下旋假动作 1 条） |
+| 混淆矩阵 | 8 对 | **17 对** | +9 对（含挑打 vs 攻球/拉球/搓球，不转 vs 下旋等） |
+| 降级规则 | 3 条 | **13 条** | +10 条（全局视角/帧率/球可见性 + 动作专属降级） |
+| 诊断规则 | 29 条 | **35 条** | +6 条（挑打 3 条 + 不转发球 2 条 + 拉球击球点 1 条） |
+
+#### V2 审查结论
+
+- ✅ `动作清单` 覆盖 13 个 active action_id，每个动作的“一句话定义”、“适用来球/场景”、“不属于本技术的情况”均已填写完整。
+- ✅ `识别线索` 共 54 条，每个动作至少 3 条 positive + 1 条 negative，覆盖 preparation → contact → follow_through 全阶段，权重标注合理。
+- ✅ `混淆矩阵` 共 17 对，覆盖所有高频易混淆场景（正反手攻/拉/拨、拧/挑、发球类型互混、搓球 vs 挑打等），且大部分已填写“示例提示词片段”。
+- ✅ `降级规则` 共 13 条（6 条全局 + 7 条动作专属），覆盖视角（正后方/正面）、帧率、可见性、球台可见性、球可见性、身体遮挡以及发球类动作专属降级。
+- ✅ `诊断规则` 共 35 条，每个动作 2–4 条，视觉证据→问题描述→训练建议三列均有具体可执行内容。
+- ✅ 必填字段无缺失，action_id 引用无非法项，`issue_id` 无重复。
+
+#### V1 遗留问题在 V2 中的解决状态
+
+| V1 问题 | V2 状态 |
+|---------|--------|
+| `识别线索` 中存在非法 phase `followup` | ✅ 已修正为 `follow_through` 等合法枚举 |
+| `降级规则` 偏少（仅 3 条） | ✅ 已扩充到 13 条，覆盖全局和动作专属 |
+| `receive` 缺少混淆矩阵 | ✅ 已补充 receive↔bh_drive、receive↔fh_flick 两对 |
+| 发球类规则偏薄 | ✅ 已补充 serve_nospin↔serve_spin 混淆对 + 发球专属降级规则 |
+| `🐧不确定`/`示例` 等残留 | ⚠️ 部分诊断规则备注栏仍有“示例”标记，但均为可用内容，不影响 JSON 生成 |
+
+#### 结论
+
+**V2 Excel 知识数据已达到启动全链路工程开发的质量标准，不再阻塞任何开发任务。** 后续 Excel → JSON 解析脚本中应保留备注栏“示例”标记的兼容处理（非阻塞性 warning），但不需要再做教练侧的清洗轮次。
+
+#### 待同步：index.json 和 actions/*.md
+
+V2 新增的 `fh_flick`（正手挑打）和 `serve_nospin`（不转发球）需要同步到：
+
+1. `client/src/assets/knowledge/index.json` — 添加对应条目和关键词。
+2. `client/src/assets/knowledge/actions/` — 创建 `fh_flick.md` 和 `serve_nospin.md` 教学内容文件。
+
+这两个动作在 Excel 的动作清单、识别线索、混淆矩阵、诊断规则中已有完整结构化数据，教学 Markdown 可参考 Excel 中的“一句话定义”和“诊断规则”生成初稿。
 
 ---
 
@@ -623,7 +690,8 @@ v2 规则：
 client/src/assets/knowledge/0_coach_knowledge/
   README.md
 
-  table_tennis_action_knowledge_v1.xlsx
+  table_tennis_action_knowledge_v1.xlsx   ← 初始版本（已归档）
+  table_tennis_action_knowledge_v2.xlsx   ← 当前版本（生产使用）
 ```
 
 ### 8.2 当前职责
@@ -704,6 +772,8 @@ server/videoAnalysis/diagnosisKnowledgeLoader.ts
 
 如果希望保持改动更小，也可以先都放在 `handleAnalysisJob.ts`，但长期建议拆开。
 
+注意：`actions/*.md` 不作为正式识别规则 fallback。由于 V2 Excel 已全面覆盖 13 个动作的识别/诊断规则，Markdown fallback 降级为仅在开发调试环境中使用。若 JSON 缺失，服务端应 graceful fallback 到“识别知识不可用/低置信度模式”，不能把 Markdown 正则解析作为生产识别规则来源。
+
 ### 9.2 修改 `handleAnalysisJob.ts`
 
 当前主流程：
@@ -738,6 +808,16 @@ wrap payload with recognition metadata
 
 必须校验：
 
+- Excel 转 JSON 阶段：
+  - 必填字段不能为空。
+  - `action_id` / `confusable_with` 必须存在于 `index.json` 的动作集合中。
+  - `phase` 必须来自 `枚举值`，例如 `preparation`、`backswing`、`contact`、`swing`、`follow_through`、`recovery`、`ball_flight`、`footwork`。
+  - `weight` 只能是 1/2/3。
+  - `priority` 只能是 1/2/3。
+  - `issue_id` 不允许重复。
+  - `action_id + confusable_with` 不允许重复。
+  - 正式模式下不允许残留 `🐧`、`不确定`、`需要教练确认`、`示例` 等未确认标记。
+- 模型输出阶段：
 - `primary_action_id` 是否在 `getActionIds()` 中，或为 `unknown`。
 - `top_candidates[].action_id` 是否合法。
 - `confidence` 是否为 `0..1`。
@@ -870,7 +950,7 @@ fixtures/video_analysis/
 
 ## 12. 分阶段落地计划
 
-### 阶段 1：文档和知识模板完善
+### 阶段 1：文档和知识模板完善 ✅ 已完成
 
 已完成：
 
@@ -878,15 +958,14 @@ fixtures/video_analysis/
 - 新增数据字典。
 - 明确 Excel 只维护视频识别/诊断规则。
 - 明确 `actions/*.md` 继续作为用户教学输出源。
+- 教练已填写 v1（11 个动作）并迭代到 v2（13 个动作）。
+- V2 已解决 V1 遗留质量问题（非法 phase、降级规则不足、缺失混淆矩阵等）。
+- V2 Excel 审核通过，知识数据已达到启动全链路工程开发的质量标准。
 
-待做：
+待做（非阻塞）：
 
-- 请教练先填写 3-5 个核心动作：
-  - `bh_drive`
-  - `bh_loop`
-  - `fh_drive`
-  - `fh_loop`
-  - `bh_flick`
+- 将 `fh_flick`（正手挑打）和 `serve_nospin`（不转发球）同步到 `index.json` 和 `actions/*.md`。
+- 后续可选优化：补充 `fh_drive↔fh_block`、`hook_serve↔reverse_pendulum_serve` 混淆矩阵。
 
 ### 阶段 2：Excel 转 JSON
 
@@ -907,9 +986,12 @@ server/data/action_video_analysis_knowledge.json
 - 读取 Excel。
 - 校验必填字段。
 - 校验 action_id 引用。
-- 校验权重和优先级范围。
+- 校验 phase / weight / priority / rule_type 等枚举。
+- 校验重复 `issue_id` 和重复混淆 pair。
+- 检查未确认标记残留。
 - 输出 JSON。
-- 对缺失字段给出清晰错误。
+- 对缺失字段、非法枚举、非法引用给出清晰错误。
+- 支持 `--strict` 模式：严格模式下遇到未确认标记直接失败。
 
 ### 阶段 3：新增 Pass 1.5
 

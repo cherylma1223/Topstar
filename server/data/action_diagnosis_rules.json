@@ -1,0 +1,383 @@
+{
+  "schema_version": "v1",
+  "rules": [
+    {
+      "action_id": "bh_drive",
+      "issue_id": "bh_drive_elbow_unstable",
+      "evidence": "肘部左右晃动，出球方向不稳定",
+      "problem": "肘部不稳，导致拨球方向控制差",
+      "priority": 1,
+      "advice": "把肘部固定在身体前方，只让前臂以肘为轴向前弹出。",
+      "related_cues": [
+        "肘部稳定"
+      ]
+    },
+    {
+      "action_id": "bh_drive",
+      "issue_id": "bh_drive_net",
+      "evidence": "击球点偏低，拍面前倾过度",
+      "problem": "反手拨球总是下网",
+      "priority": 1,
+      "advice": "击球点太低了！在球弹起的上升期出手。同时检查拍面是否过于前倾，稍微亮一点拍面往前推。",
+      "related_cues": [
+        "击球点",
+        "拍面角度"
+      ]
+    },
+    {
+      "action_id": "bh_drive",
+      "issue_id": "bh_drive_powerlow",
+      "evidence": "前臂弹击不明显、手腕过度参与",
+      "problem": "拨球力量小不够快",
+      "priority": 2,
+      "advice": "拨球的力量80%来自前臂以肘为轴的快速弹出，手腕只是微调方向。练习时感受弹出去的爆发感。",
+      "related_cues": [
+        "前臂弹击动作"
+      ]
+    },
+    {
+      "action_id": "bh_flick",
+      "issue_id": "bh_flick_out",
+      "evidence": "手腕内扣不够深、撞击多于摩擦",
+      "problem": "拧拉出界，感觉撞击太多",
+      "priority": 1,
+      "advice": "拍头一定要沉下去，练习时多体会刷球皮的感觉，加强摩擦。",
+      "related_cues": [
+        "手腕内扣幅度"
+      ]
+    },
+    {
+      "action_id": "bh_flick",
+      "issue_id": "bh_flick_powerlow",
+      "evidence": "肘部缩在胸前未顶出",
+      "problem": "发力很闷，球速提不起来",
+      "priority": 1,
+      "advice": "检查你的肘部！把肘部顶出去，给手腕留出爆发的距离。",
+      "related_cues": [
+        "肘部位置"
+      ]
+    },
+    {
+      "action_id": "bh_flick",
+      "issue_id": "bh_flick_stiff",
+      "evidence": "身体僵硬、纯靠手发力",
+      "problem": "身体僵硬，回球没底劲",
+      "priority": 2,
+      "advice": "双腿要加个弹簧！击球瞬间要有重心从后向前的蹬伸配合，不能纯靠手。",
+      "related_cues": [
+        "重心移动"
+      ]
+    },
+    {
+      "action_id": "bh_loop",
+      "issue_id": "bh_loop_nospin",
+      "evidence": "引拍未下沉、手腕僵硬",
+      "problem": "拉球没转，总是撞击过多",
+      "priority": 1,
+      "advice": "引拍要沉下去，感受手腕勾住球并快速刷上去的感觉。可先练拉下旋球强迫多用摩擦。",
+      "related_cues": [
+        "引拍幅度",
+        "手腕动作"
+      ]
+    },
+    {
+      "action_id": "bh_loop",
+      "issue_id": "bh_loop_higharc",
+      "evidence": "发力方向太向上、拍面太仰",
+      "problem": "回球弧线太高，容易被打",
+      "priority": 1,
+      "advice": "调整挥拍轨迹增加向前分量，控制拍面不要太仰，在中上部包裹住球。",
+      "related_cues": [
+        "挥拍方向"
+      ]
+    },
+    {
+      "action_id": "bh_loop",
+      "issue_id": "bh_loop_powerlow",
+      "evidence": "仅用手臂发力、无核心参与",
+      "problem": "发不出力，球的威力小",
+      "priority": 2,
+      "advice": "反手拉也要靠蹬地和腰部支撑。击球瞬间感受到腹部核心收紧，全身力量汇聚到前臂弹出上。",
+      "related_cues": [
+        "核心发力"
+      ]
+    },
+    {
+      "action_id": "bh_block",
+      "issue_id": "bh_block_miss",
+      "evidence": "盯球不够、手腕晃动",
+      "problem": "反手防守漏球或飞掉",
+      "priority": 1,
+      "advice": "盯球！拍要早于球到达击球点，手腕锁死不能晃动。",
+      "related_cues": [
+        "手腕稳定"
+      ]
+    },
+    {
+      "action_id": "bh_block",
+      "issue_id": "bh_block_high",
+      "evidence": "只侧身挡无重心前压",
+      "problem": "回球太高被连续进攻",
+      "priority": 1,
+      "advice": "要有整体重心前压的动作，把球闷在对方台面上，拍面压低。",
+      "related_cues": [
+        "重心前压"
+      ]
+    },
+    {
+      "action_id": "fh_drive",
+      "issue_id": "fh_drive_out",
+      "evidence": "拍面后仰、向前推送过多",
+      "problem": "攻球总是出界控制不住方向",
+      "priority": 1,
+      "advice": "压住拍面！保持稍前倾角度，增加摩擦减少纯撞击。",
+      "related_cues": [
+        "拍面角度"
+      ]
+    },
+    {
+      "action_id": "fh_drive",
+      "issue_id": "fh_drive_bigswing",
+      "evidence": "引拍幅度过大、动作不紧凑",
+      "problem": "动作太大，连续攻球衔接慢",
+      "priority": 1,
+      "advice": "攻球讲究小快灵，引拍控制在30cm以内，用前臂为主。",
+      "related_cues": [
+        "引拍幅度"
+      ]
+    },
+    {
+      "action_id": "fh_drive",
+      "issue_id": "fh_drive_slow",
+      "evidence": "击球时间太晚",
+      "problem": "攻球没速度对方轻松防回",
+      "priority": 2,
+      "advice": "提前出手，在球弹到最高点时迎上去借力加前臂加速度。",
+      "related_cues": [
+        "击球点时机"
+      ]
+    },
+    {
+      "action_id": "fh_loop",
+      "issue_id": "fh_loop_net",
+      "evidence": "引拍位置太高、摩擦不到",
+      "problem": "拉球下网总感觉摩擦不上",
+      "priority": 1,
+      "advice": "手要沉下去，从球的中下部往上蹭找到薄摩擦的感觉。先练拉下旋球体会从下往上提的手感。",
+      "related_cues": [
+        "引拍高度"
+      ]
+    },
+    {
+      "action_id": "fh_loop",
+      "issue_id": "fh_loop_powerlow",
+      "evidence": "用手臂抡、无蹬转",
+      "problem": "拉球没力量球飘飘的",
+      "priority": 1,
+      "advice": "力量来源是蹬腿转腰不是甩胳膊。多练徒手挥拍把蹬转节奏找对。",
+      "related_cues": [
+        "蹬转动作"
+      ]
+    },
+    {
+      "action_id": "fh_loop",
+      "issue_id": "fh_loop_late_contact",
+      "evidence": "击球点靠后，身体被球顶住",
+      "problem": "击球点太晚，拉球质量不稳定",
+      "priority": 1,
+      "advice": "提前移动到位，在身体右前方击球，先练固定落点多球。",
+      "related_cues": [
+        "击球点"
+      ]
+    },
+    {
+      "action_id": "fh_loop",
+      "issue_id": "fh_loop_unstable",
+      "evidence": "击球点不固定",
+      "problem": "拉球质量不稳定时好时坏",
+      "priority": 2,
+      "advice": "永远在身体右前方腰部高度击球，别等球掉下去再拉。盯球，在上升期或最高点出手。",
+      "related_cues": [
+        "击球点固定"
+      ]
+    },
+    {
+      "action_id": "fh_block",
+      "issue_id": "fh_block_out",
+      "evidence": "拍面后仰、无压球动作",
+      "problem": "挡球总是飞出底线",
+      "priority": 1,
+      "advice": "加大拍面前倾角度，接触球时有细微压球动作抵消旋转。",
+      "related_cues": [
+        "拍面前倾"
+      ]
+    },
+    {
+      "action_id": "fh_block",
+      "issue_id": "fh_block_net",
+      "evidence": "减力过度、手臂松垮",
+      "problem": "球挡不住直接下网",
+      "priority": 1,
+      "advice": "防弧圈也要有一定支撑，手臂不能完全松垮，像有弹性的墙。",
+      "related_cues": [
+        "手臂支撑"
+      ]
+    },
+    {
+      "action_id": "serve_spin",
+      "issue_id": "serve_spin_nospin",
+      "evidence": "推球而非切球",
+      "problem": "发球不转对方直接上手拉",
+      "priority": 1,
+      "advice": "用拍面小面积接触球底部向下快速刮一刀，感受吃住球再甩出去。",
+      "related_cues": [
+        "摩擦方式"
+      ]
+    },
+    {
+      "action_id": "serve_spin",
+      "issue_id": "serve_spin_high",
+      "evidence": "第一跳位置不对",
+      "problem": "发球总冒高过网后弹起很高",
+      "priority": 2,
+      "advice": "第一跳落在本方球台靠近球网位置，增加向下用力减少向前送。",
+      "related_cues": [
+        "第一落点"
+      ]
+    },
+    {
+      "action_id": "hook_serve",
+      "issue_id": "hook_serve_nospin",
+      "evidence": "手腕爆发力不够",
+      "problem": "发球不转只是碰过去",
+      "priority": 1,
+      "advice": "加大引拍量，感受手腕内收到极限后再瞬间向外翻转释放。",
+      "related_cues": [
+        "手腕爆发力"
+      ]
+    },
+    {
+      "action_id": "hook_serve",
+      "issue_id": "hook_serve_higharc",
+      "evidence": "接触球位置太靠下",
+      "problem": "发球弧线过高对手直接上手抢攻",
+      "priority": 2,
+      "advice": "稍微增加向前撞击分量让球贴网过去，在球落到台面附近时再出手。",
+      "related_cues": [
+        "击球高度"
+      ]
+    },
+    {
+      "action_id": "reverse_pendulum_serve",
+      "issue_id": "rp_serve_nospin",
+      "evidence": "手腕内屈外展幅度不够",
+      "problem": "发球不出转对手容易接",
+      "priority": 1,
+      "advice": "重点体会手腕从勾到撇的瞬间爆发力转换，要有击响球的感觉。",
+      "related_cues": [
+        "手腕发力"
+      ]
+    },
+    {
+      "action_id": "reverse_pendulum_serve",
+      "issue_id": "rp_serve_wide",
+      "evidence": "挥拍轨迹太大用大臂抡",
+      "problem": "发球落点不可控经常出界",
+      "priority": 2,
+      "advice": "逆旋转力量核心在手腕和小臂，控制第一落点靠近己方端线。",
+      "related_cues": [
+        "挥拍幅度"
+      ]
+    },
+    {
+      "action_id": "receive",
+      "issue_id": "receive_high",
+      "evidence": "拍面后仰角度过大",
+      "problem": "搓球冒高被对方暴拉",
+      "priority": 1,
+      "advice": "拍面只需微微后仰15度左右，力量方向改为向前偏下推切。",
+      "related_cues": [
+        "拍面角度"
+      ]
+    },
+    {
+      "action_id": "receive",
+      "issue_id": "receive_long",
+      "evidence": "出手太晚、送拍太多",
+      "problem": "摆短总是出台控制不住长短",
+      "priority": 1,
+      "advice": "必须在球刚弹起上升初期出手，触球后急刹车不能往前送。",
+      "related_cues": [
+        "出手时机"
+      ]
+    },
+    {
+      "action_id": "receive",
+      "issue_id": "receive_misread",
+      "evidence": "只看球轨迹不盯触球瞬间",
+      "problem": "接发球判断不清旋转",
+      "priority": 1,
+      "advice": "盯对方球拍触球瞬间。球拍从上往下切是下旋，从后往前推是不转或上旋。",
+      "related_cues": [
+        "盯球判断"
+      ]
+    },
+    {
+      "action_id": "fh_flick",
+      "issue_id": "fh_flick_out",
+      "evidence": "手腕后展不足、撞击多于摩擦",
+      "problem": "挑打出界或下网，命中率低",
+      "priority": 1,
+      "advice": "挑打靠手腕后展再前甩的摩擦来控制弧线，不是硬碰。练习时可先从慢球开始，感受手腕包裹球再弹出的感觉。",
+      "related_cues": [
+        "手腕后展",
+        "摩擦"
+      ]
+    },
+    {
+      "action_id": "fh_flick",
+      "issue_id": "fh_flick_slow",
+      "evidence": "上步太慢，球已下降低于球网",
+      "problem": "挑打总下网，击球点太低",
+      "priority": 1,
+      "advice": "挑打必须在球弹起的上升期或高点出手，球一弹立刻上步。多练判断来球长短，提前启动。",
+      "related_cues": [
+        "上步时机",
+        "击球点"
+      ]
+    },
+    {
+      "action_id": "fh_flick",
+      "issue_id": "fh_flick_weak",
+      "evidence": "只有手腕发力、身体重心没跟进",
+      "problem": "挑打软绵绵没威胁",
+      "priority": 2,
+      "advice": "上步不只是脚的事，身体重心要跟上去。击球瞬间重心从后脚蹬到前脚，身体的力量压进台内。",
+      "related_cues": [
+        "重心移动"
+      ]
+    },
+    {
+      "action_id": "serve_nospin",
+      "issue_id": "serve_nospin_too_much_spin",
+      "evidence": "出手时无意识加入了摩擦",
+      "problem": "想发不转但发出去还是有旋转",
+      "priority": 1,
+      "advice": "不转发球的要领就是\"碰、不摩擦\"。触球瞬间拍面立起，用拍面中心直接撞击球中部，手不要有任何切、兜的动作。先练撞击感，再练动作的欺骗性。",
+      "related_cues": [
+        "触球摩擦"
+      ]
+    },
+    {
+      "action_id": "serve_nospin",
+      "issue_id": "serve_nospin_too_slow",
+      "evidence": "害怕出界，发力太轻",
+      "problem": "不转发球太慢，对手轻松判断",
+      "priority": 2,
+      "advice": "不转不等于不快。大胆撞击，利用速度弥补无旋转。发球落点结合变化，快不转和慢下旋交替使用效果最好。",
+      "related_cues": [
+        "发力速度"
+      ]
+    }
+  ]
+}

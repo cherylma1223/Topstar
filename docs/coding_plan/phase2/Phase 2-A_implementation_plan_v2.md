@@ -1,5 +1,17 @@
 # 乒乓球技术识别准确度优化整合方案 (V2.5)
 
+## 更新日志
+
+| 日期 | 变更 | 说明 |
+|---|---|---|
+| 2026-06-07 | 补充更新日志 | 记录本文档当前覆盖范围和后续需要同步补充的任务，方便和设计文档 v2 对照。 |
+| 2026-06-07 | 确认已覆盖主干开发任务 | 本文档已覆盖 Excel -> JSON、识别知识加载器、Pass 1.5 `techniqueClassifier`、`recognitionDecision`、`handleAnalysisJob.ts` 改造、视频分析 E2E 验证等主干任务。 |
+| 2026-06-07 | 标记待补充任务 | 需要在后续正文中进一步补充：Excel 清洗任务、严格校验细则、报告字段扩展、前端展示任务，以及弱化 Markdown fallback 的生产定位。 |
+| 2026-06-07 | 对齐最新知识源边界 | 设计文档已明确 `actions/*.md` 是用户教学输出内容源，Excel/JSON 是视频识别规则源；implementation plan 中的 Markdown fallback 需要按此边界重新收敛。 |
+| 2026-06-07 | **同步 V2 Excel 审核结果** | 教练已提供包含 13 个动作的 v2 Excel。更新文件引用，并将 Markdown Fallback 从“防卡死机制”降级为“开发调试机制”。增加任务：同步 `fh_flick`、`serve_nospin` 到 index.json。 |
+
+---
+
 ## 方案设计背景
 
 在 Phase 2-A 视频分析功能的基础上，为了从根本上解决技术动作识别“一错百错”的级联故障，我们需要重构视频分析 Pipeline。
@@ -13,7 +25,7 @@
 | 维度 | 我方原始方案 | 第三方 v2 设计 | **融合整合方案 (本方案)** |
 |---|---|---|---|
 | **识别与诊断解耦** | 在 Pass 2 中同时进行识别与诊断，在 prompt 中注入规则。 | **彻底解耦**。新增独立的 Pass 1.5 关卡只作分类，Pass 2 只作基于该动作的诊断。 | **采纳第三方设计**。执行 Pass 1.5 独立识别，大幅减轻 Pass 2 认知负载，防止技术猜错导致诊断全错。 |
-| **规则数据源** | 直接读取并解析现有的 `actions/*.md` 教学知识库。 | 引入 Excel 模板 (`table_tennis_action_knowledge_v1.xlsx`)，由教练填写识别/混淆/诊断规则并转成 JSON。 | **双轨制运行，且提供平滑 fallback 机制**：<br>1. **首选**：加载 Excel 生成的识别 JSON 规则。<br>2. **备选 (Fallback)**：若 Excel 尚未填写完成，系统自动通过 regex 抽取现有 Markdown 里的“动作要领”和“常见问题”，作为特征参考注入，确保系统开发不被内容填写进度所阻塞。 |
+| **规则数据源** | 直接读取并解析现有的 `actions/*.md` 教学知识库。 | 引入 Excel 模板 (`table_tennis_action_knowledge_v2.xlsx`)，由教练填写识别/混淆/诊断规则并转成 JSON。 | **双轨制运行，以 Excel JSON 为主**：<br>1. **首选（生产环境）**：加载 Excel 生成的识别 JSON 规则。<br>2. **备选（开发调试）**：作为开发调试时的 fallback 机制，若 JSON 加载失败则从 `actions/*.md` 提取特征，但不作为生产环境的主链路。 |
 | **可信度与容错** | 依靠 Schema 对 ID 进行强约束。 | 引入置信度数值、Top 2 候选、混淆矩阵、视频可见度影响，设计 `confirmed` / `tentative` / `unknown` / `ambiguous` 决策树。 | **采纳第三方设计**。若置信度低于 0.55 或主动作 ID 为 `unknown`，Pass 2 将自动降级为“拍摄建议报告”，不予虚假诊断，保护产品专业形象。 |
 | **代码结构** | 全写在 `handleAnalysisJob.ts` 中。 | 建议在 `server/` 新增 `videoAnalysis/` 目录进行模块化拆分。 | **采纳模块化拆分**。将知识库加载、Pass 1.5 识别、降级决策、Pass 2 诊断逻辑彻底解耦，易于维护 and 扩展。 |
 
@@ -21,7 +33,7 @@
 
 ## 已确定的设计决策 (Resolved Design Decisions)
 
-1. **过渡 Fallback 机制**：采用“Excel JSON 优先，Markdown 自动解析兜底”的机制。在 Excel 未生成对应的 JSON 文件（或为空）时，系统会自动从 `client/src/assets/knowledge/actions/*.md` 中提取【动作要领】和【常见问题】注入模型，防止内容填写卡死开发和测试进度。
+1. **开发调试 Fallback 机制**：采用“Excel JSON 为主，Markdown 解析作为开发兜底”的机制。由于 V2 Excel（13个动作）已就绪，系统优先加载其生成的 JSON。仅在调试环境 JSON 缺失时，才从 `client/src/assets/knowledge/actions/*.md` 中提取特征作为 fallback，防止开发流程阻断。
 2. **Excel 读取依赖库**：在 `server/package.json` 中安装标准的 `xlsx` (SheetJS) 依赖，用于开发 Excel -> JSON 的解析编译脚本。
 3. **多动作视频处理策略**：
    - **短期 (Phase 2-A)**：以**单一主导动作**为诊断核心，通过 Pass 1.5 提取 `primary_action_id` 进行针对性诊断，次要动作仅记录在 `top_candidates` 中。
@@ -34,7 +46,7 @@
 ### 组件 1：编译与知识库加载层
 
 #### [NEW] [export_action_recognition_knowledge.mjs](file:///Users/yingdongma/Documents/Dev/projects/Topstar/client/src/assets/knowledge/0_coach_knowledge/export_action_recognition_knowledge.mjs)
-- 读取教练填写的 Excel 模板 `table_tennis_action_knowledge_v1.xlsx`。
+- 读取教练填写的 Excel 模板 `table_tennis_action_knowledge_v2.xlsx`。
 - 校验合法性（如 `action_id` 必须在 `index.json` 中，权重范围合理等）。
 - 输出两个 JSON 文件：
   1. [action_video_analysis_knowledge.json](file:///Users/yingdongma/Documents/Dev/projects/Topstar/server/data/action_video_analysis_knowledge.json)（识别与混淆降级规则）
@@ -43,8 +55,13 @@
 #### [NEW] [analysisKnowledgeLoader.ts](file:///Users/yingdongma/Documents/Dev/projects/Topstar/server/videoAnalysis/analysisKnowledgeLoader.ts)
 - 实现知识统一加载器：
   1. 优先加载 `server/data/action_video_analysis_knowledge.json` 和 `action_diagnosis_rules.json`。
-  2. 若上述文件不存在或加载失败，启动 **Markdown Fallback Parser**，动态解析 `client/src/assets/knowledge/actions/*.md`。
+  2. 若上述文件不存在或加载失败，作为开发调试使用 **Markdown Fallback Parser**，动态解析 `client/src/assets/knowledge/actions/*.md`。
 - 提供 `getRecognitionRules()`、`getDiagnosisRules()` 和 `getActionIds()` 接口。
+
+#### [MODIFY] 同步新知识到基础库
+- **任务**：V2 Excel 新增了 `fh_flick`（正手挑打）和 `serve_nospin`（不转发球）。
+- 修改 `client/src/assets/knowledge/index.json`，补充这两个新动作的条目、标题和关键词。
+- 在 `client/src/assets/knowledge/actions/` 目录下创建 `fh_flick.md` 和 `serve_nospin.md` 初稿（可根据 Excel 中的定义和规则填充）。
 
 ---
 

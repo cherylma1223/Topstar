@@ -9,6 +9,9 @@
 import db from '../db';
 import { getAI } from '../routes/v1';
 import { recommendTutorials } from '../tutorials/recommendTutorials';
+import { classifyTechnique } from '../videoAnalysis/techniqueClassifier';
+import { evaluateClassification, DecisionAction } from '../videoAnalysis/recognitionDecision';
+import { getDiagnosisRules } from '../videoAnalysis/analysisKnowledgeLoader';
 
 // ─── 类型定义 ─────────────────────────────────────────────────────
 
@@ -71,25 +74,42 @@ const SEGMENT_IDENTIFICATION_PROMPT = `你是一名专业乒乓球视频分析�
 如果视频内容不是乒乓球相关，请输出：
 { "segments": [], "total_valid_seconds": 0, "not_table_tennis": true }`;
 
-function buildPass2Prompt(analysisType: string, segments: VideoSegment[]): string {
+function buildPass2Prompt(analysisType: string, segments: VideoSegment[], decision?: DecisionAction): string {
   const segmentList = segments
     .map(s => `- ${s.start}-${s.end}：${s.description || '有效回合'}`)
     .join('\n');
 
   if (analysisType === 'technique') {
-    return `你是一名专业乒乓球教练。请分析这段视频中以下时间段的技术动作：
+    let rulesText = '';
+    let targetActionText = '技术动作';
+    
+    if (decision && decision.status !== 'unknown') {
+      const diagRules = getDiagnosisRules();
+      if (diagRules) {
+        const rulesForAction = diagRules.rules.filter(r => r.action_id === decision.validated_action_id);
+        rulesText = `\n【诊断规则约束】\n系统已认定该动作为【${decision.validated_action_id}】。请严格对照以下规则进行诊断：\n`;
+        rulesForAction.forEach(r => {
+          rulesText += `- 如果看到视觉证据: "${r.evidence}" -> 诊断为: "${r.problem}" -> 训练建议: "${r.advice}"\n`;
+        });
+        rulesText += `如果遇到规则以外的问题，可以补充，但必须优先匹配上述规则。`;
+      }
+      targetActionText = `【${decision.validated_action_id}】动作`;
+    }
+
+    return `你是一名专业乒乓球教练。请分析这段视频中以下时间段的${targetActionText}：
 ${segmentList}
 
 请忽略上述时间段以外的画面（捡球、休息等无关内容）。
 对有效片段中的技术动作进行诊断，指出问题并给出改进建议。
+${rulesText}
 
 请严格按以下 JSON 格式输出（只输出 JSON，不要其他文字）：
 {
-  "techName": "xxx技术诊断报告",
-  "summaryText": "整体评价一句话",
+  "techName": "动作诊断报告标题",
+  "summaryText": "${decision?.user_message || '整体评价一句话'}",
   "problems": [{ "text": "问题描述", "timestamp": "mm:ss" }],
   "improvements": ["改进建议1", "改进建议2"],
-  "action_ids_detected": ["bh_flick"]
+  "action_ids_detected": ["${decision?.validated_action_id || ''}"]
 }`;
   } else {
     return `你是一名专业乒乓球战术分析师。请分析这段比赛视频中以下有效回合时间段：
@@ -413,32 +433,64 @@ async function uploadAndAnalyzeVideo(
       throw new Error(ERROR_CODES.NO_VALID_SEGMENTS);
     }
 
-    // ───── Pass 2：聚焦分析 ──────────────────────────────────────
-    const pass2Prompt = buildPass2Prompt(analysisType, validSegments);
-    const pass2Schema = analysisType === 'technique' ? TECH_SCHEMA : MATCH_SCHEMA;
+    // ───── Pass 1.5 & Pass 2 ──────────────────────────────────────
+    let finalPayload: any;
+    let finalModel = model;
+    let decision: DecisionAction | undefined;
 
-    const pass2Result = await generateContentWithModelFallback(ai, {
-      contents: [{ role: 'user', parts: [
-        { fileData },
-        { text: pass2Prompt },
-      ]}],
-      config: {
-        temperature: 0.2,
-        responseMimeType: 'application/json',
-        responseSchema: pass2Schema,
-      },
-    }, model);
-    const pass2Response = pass2Result.response;
-    const finalModel = pass2Result.model;
+    if (analysisType === 'technique') {
+      // 独立分类环节 Pass 1.5
+      const classResult = await classifyTechnique(fileData, validSegments, ai, DEFAULT_VIDEO_MODEL);
+      decision = evaluateClassification(classResult);
 
-    const rawPass2 = extractJson(pass2Response.text || '');
-    if (!rawPass2) {
-      throw new Error(ERROR_CODES.REPORT_PARSE_FAILED + ':pass2');
+      if (decision.status === 'unknown') {
+        // 直接降级，跳过 Pass 2 诊断
+        finalPayload = {
+          techName: '未识别技术动作',
+          summaryText: decision.user_message,
+          problems: [],
+          improvements: [],
+          action_ids_detected: []
+        };
+      }
+    }
+
+    if (!finalPayload) {
+      // 进入正常诊断环节 Pass 2
+      const pass2Prompt = buildPass2Prompt(analysisType, validSegments, decision);
+      const pass2Schema = analysisType === 'technique' ? TECH_SCHEMA : MATCH_SCHEMA;
+
+      const pass2Result = await generateContentWithModelFallback(ai, {
+        contents: [{ role: 'user', parts: [
+          { fileData },
+          { text: pass2Prompt },
+        ]}],
+        config: {
+          temperature: 0.2,
+          responseMimeType: 'application/json',
+          responseSchema: pass2Schema,
+        },
+      }, model);
+      const pass2Response = pass2Result.response;
+      finalModel = pass2Result.model;
+
+      const rawPass2 = extractJson(pass2Response.text || '');
+      if (!rawPass2) {
+        throw new Error(ERROR_CODES.REPORT_PARSE_FAILED + ':pass2');
+      }
+      finalPayload = rawPass2;
+    }
+
+    // 确保强行写入受信任的 action_id
+    if (analysisType === 'technique' && decision && decision.validated_action_id !== 'unknown') {
+      if (!Array.isArray(finalPayload)) {
+        finalPayload.action_ids_detected = [decision.validated_action_id];
+      }
     }
 
     // ───── 教程关联 ──────────────────────────────────────────────
     const allActionIds: string[] = [];
-    const reportsArr: TechniqueReport[] = Array.isArray(rawPass2) ? rawPass2 : [rawPass2];
+    const reportsArr: TechniqueReport[] = Array.isArray(finalPayload) ? finalPayload : [finalPayload];
     for (const r of reportsArr) {
       if (Array.isArray(r.action_ids_detected)) {
         allActionIds.push(...r.action_ids_detected);
@@ -453,7 +505,7 @@ async function uploadAndAnalyzeVideo(
       }
     }
 
-    const payload = wrapReportPayload(analysisType, rawPass2, validSegments, tutorialsMap);
+    const payload = wrapReportPayload(analysisType, finalPayload, validSegments, tutorialsMap);
     return { payload, geminiFileName, model: finalModel };
 
   } finally {

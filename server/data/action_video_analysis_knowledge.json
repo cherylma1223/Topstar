@@ -1,0 +1,1023 @@
+{
+  "schema_version": "v1",
+  "actions": [
+    {
+      "id": "bh_flick",
+      "title": "反手拧拉",
+      "aliases": [
+        "拧拉",
+        "反手拧",
+        "台内拧",
+        "拧拉技术",
+        "张继科拧拉",
+        "反手台内",
+        "内扣",
+        "架肘"
+      ],
+      "definition": "台内反手位利用手腕内扣后快速外展摩擦球的侧上部，制造侧上旋的进攻性台内技术",
+      "scope": {
+        "scenario": "台内短球（不出台或少出台）；来球多为下旋或弱上旋；常用于接发球抢攻、台内主动起板",
+        "exclusions": [
+          "如果来球明显出台需要引拍更充分、向上摩擦更多，则可能是反手拉球",
+          "如果只是台内轻碰回球而非手腕外展发力，则不是拧拉"
+        ]
+      },
+      "positive_cues": [
+        {
+          "phase": "contact",
+          "cue": "手腕由极度内扣到快速外展，像拧螺丝一样",
+          "weight": 3,
+          "why": "拧拉的核心判别标志",
+          "missing_policy": "无法确定时降低置信度"
+        },
+        {
+          "phase": "backswing",
+          "cue": "肘部向前架起作为发力支点",
+          "weight": 2,
+          "why": "区别于普通拨球的关键",
+          "missing_policy": "标记为uncertain"
+        },
+        {
+          "phase": "swing",
+          "cue": "手腕外展时有明显的侧向摩擦动作，球拍从球的侧下部向侧上部包裹，产生强烈侧上旋",
+          "weight": 2,
+          "why": "拧拉产生侧上旋的标志性摩擦特征，区别于纯撞击或纯摩擦",
+          "missing_policy": "如果侧向摩擦不明显，需结合手腕内扣幅度和回球上台后的侧拐程度综合判断，降低置信度"
+        }
+      ],
+      "negative_cues": [
+        {
+          "phase": "backswing",
+          "cue": "无明显手腕内扣，前臂直接向前弹击",
+          "weight": 3,
+          "why": "更像反手拨球或拉球",
+          "missing_policy": "加入bh_drive作为候选"
+        }
+      ]
+    },
+    {
+      "id": "bh_drive",
+      "title": "反手拨球",
+      "aliases": [
+        "拨球",
+        "反手拨",
+        "反手快拨",
+        "反手击球",
+        "拨球技术"
+      ],
+      "definition": "近台反手位处理上旋或不转来球的基础进攻/衔接技术，以前臂向前弹击为主，动作小、节奏快",
+      "scope": {
+        "scenario": "近台反手位；来球多为上旋、不转或轻微下旋；常用于相持衔接、快节奏压反手",
+        "exclusions": [
+          "如果来球明显出台且引拍更充分、向上摩擦和随挥更明显，更可能是反手拉球",
+          "如果是台内短球且手腕内扣外展明显，更可能是反手拧拉"
+        ]
+      },
+      "positive_cues": [
+        {
+          "phase": "swing",
+          "cue": "前臂以肘为轴向前弹出，挥拍幅度小",
+          "weight": 3,
+          "why": "区分反手拨球和反手拉球的核心线索",
+          "missing_policy": "降低置信度，不要强判为反手拨球"
+        },
+        {
+          "phase": "contact",
+          "cue": "以撞击为主、手腕稳定不晃动",
+          "weight": 2,
+          "why": "拨球的发力特征",
+          "missing_policy": "标记为辅助线索"
+        },
+        {
+          "phase": "preparation",
+          "cue": "肘部固定在身体前方不动",
+          "weight": 2,
+          "why": "拨球动作稳定性的标志",
+          "missing_policy": "标记为辅助线索"
+        }
+      ],
+      "negative_cues": [
+        {
+          "phase": "backswing",
+          "cue": "引拍明显更低且向上摩擦充分",
+          "weight": 3,
+          "why": "更像反手拉球",
+          "missing_policy": "加入bh_loop作为top2候选"
+        }
+      ]
+    },
+    {
+      "id": "bh_loop",
+      "title": "反手拉球",
+      "aliases": [
+        "反手拉球",
+        "反手拉",
+        "反手弧圈",
+        "反手冲",
+        "反手弧圈球",
+        "顶肘"
+      ],
+      "definition": "中近台反手位处理出台下旋或上旋来球的弧圈球技术，以顶肘为支点、前臂带动手腕鞭打摩擦，制造强烈上旋",
+      "scope": {
+        "scenario": "出台来球（明显出了台面）；来球可为下旋、不转或上旋；需要充分的引拍和发力空间",
+        "exclusions": [
+          "如果来球在台内无法充分引拍，更可能是拧拉或摆短",
+          "如果引拍极小幅、仅靠前臂弹击，更可能是反手拨球"
+        ]
+      },
+      "positive_cues": [
+        {
+          "phase": "backswing",
+          "cue": "引拍至腹前偏下，顶肘、手腕放松内屈",
+          "weight": 3,
+          "why": "反手拉球引拍特征",
+          "missing_policy": "无法确认时降低置信度"
+        },
+        {
+          "phase": "swing",
+          "cue": "以肘为轴，前臂快速向右前方挥动，手腕内屈转外展形成鞭打",
+          "weight": 3,
+          "why": "反手拉球发力特征",
+          "missing_policy": "无法确认时降低置信度"
+        },
+        {
+          "phase": "contact",
+          "cue": "在下降期或最高点摩擦球中上部，向上向前制造强烈上旋",
+          "weight": 2,
+          "why": "拉球的关键触球特征",
+          "missing_policy": "标记为辅助线索"
+        }
+      ],
+      "negative_cues": [
+        {
+          "phase": "swing",
+          "cue": "前臂仅向前弹击、无向上摩擦、手腕无鞭打",
+          "weight": 3,
+          "why": "更像反手拨球",
+          "missing_policy": "加入bh_drive作为候选"
+        }
+      ]
+    },
+    {
+      "id": "bh_block",
+      "title": "反手防弧圈球",
+      "aliases": [
+        "反手防",
+        "防弧圈",
+        "反手防守",
+        "反手挡",
+        "快撕",
+        "反手封堵",
+        "防守"
+      ],
+      "definition": "近台反手位借对方拉球力量进行封堵或快撕的防御/转换技术，动作极小、重在借力和拍面角度控制",
+      "scope": {
+        "scenario": "对手主动拉冲时；来球上旋强烈速度快；近台站位需要快速反应；常用于被动防守转攻",
+        "exclusions": [
+          "如果主动发力向前弹击而不是借力封堵，可能是反手拨球",
+          "如果有充分引拍和向上摩擦，可能是反手拉球"
+        ]
+      },
+      "positive_cues": [
+        {
+          "phase": "preparation",
+          "cue": "身体靠近球台，重心下沉，几乎无引拍动作",
+          "weight": 3,
+          "why": "防守技术的典型准备姿态",
+          "missing_policy": "无法确认时降低置信度"
+        },
+        {
+          "phase": "contact",
+          "cue": "手腕固定，以前臂迎球借力，拍面前倾明显",
+          "weight": 3,
+          "why": "防弧圈的核心特征",
+          "missing_policy": "无法确认时降低置信度"
+        },
+        {
+          "phase": "followup",
+          "cue": "动作行程极短，击球后原地待命",
+          "weight": 1,
+          "why": "防守节奏的特征",
+          "missing_policy": "标记为辅助线索"
+        }
+      ],
+      "negative_cues": [
+        {
+          "phase": "backswing",
+          "cue": "有明显引拍且主动向前发力",
+          "weight": 2,
+          "why": "主动进攻而非防守",
+          "missing_policy": "加入bh_drive或bh_loop作为候选"
+        }
+      ]
+    },
+    {
+      "id": "fh_drive",
+      "title": "正手攻球",
+      "aliases": [
+        "正手攻球",
+        "正手攻",
+        "正手击球",
+        "攻球",
+        "正手打"
+      ],
+      "definition": "近台正手位处理上旋或不转来球的基础进攻技术，以腰带手，前臂快速收缩，撞击为主、动作紧凑",
+      "scope": {
+        "scenario": "近台正手位；来球高度适中（高点至肩高）；上旋或不转来球；用于主动进攻和衔接",
+        "exclusions": [
+          "如果引拍幅度大、蹬转充分、向上摩擦明显，更可能是正手拉球",
+          "如果来球在台内无法拉开，可能是正手挑打"
+        ]
+      },
+      "positive_cues": [
+        {
+          "phase": "backswing",
+          "cue": "以腰带手向右后方小幅度引拍，引拍幅度不超过30cm",
+          "weight": 3,
+          "why": "正手攻球紧凑引拍特征",
+          "missing_policy": "无法确认时降低置信度"
+        },
+        {
+          "phase": "swing",
+          "cue": "前臂迅速向前收缩，以撞击为主，少量摩擦",
+          "weight": 3,
+          "why": "攻球的核心发力特征",
+          "missing_policy": "无法确认时降低置信度"
+        },
+        {
+          "phase": "contact",
+          "cue": "在上升期或最高点击球，击球点在身体右前方",
+          "weight": 2,
+          "why": "攻球节奏快的标志",
+          "missing_policy": "标记为辅助线索"
+        }
+      ],
+      "negative_cues": [
+        {
+          "phase": "backswing",
+          "cue": "引拍幅度大、腰部充分右转、手臂后引至身体后方",
+          "weight": 3,
+          "why": "更像正手拉球",
+          "missing_policy": "加入fh_loop作为候选"
+        }
+      ]
+    },
+    {
+      "id": "fh_loop",
+      "title": "正手拉球",
+      "aliases": [
+        "正手拉球",
+        "正手拉",
+        "正手弧圈",
+        "弧圈球",
+        "拉球",
+        "正手冲",
+        "蹬转",
+        "鞭打"
+      ],
+      "definition": "中近台正手位最具威胁的弧圈球进攻技术，通过蹬腿转腰收臂的完整动力链制造强烈上旋",
+      "scope": {
+        "scenario": "出台来球（明显出了台面）；下旋、不转或上旋来球；有充分时间完成蹬转引拍",
+        "exclusions": [
+          "如果引拍极小、仅前臂收缩以撞击为主、没有蹬转动作，更可能是正手攻球"
+        ]
+      },
+      "positive_cues": [
+        {
+          "phase": "backswing",
+          "cue": "腰部充分向右后方转动，手臂自然引拍至身体右侧偏后方",
+          "weight": 3,
+          "why": "正手拉球引拍特征",
+          "missing_policy": "无法确认时降低置信度"
+        },
+        {
+          "phase": "swing",
+          "cue": "右脚蹬地→转腰→大臂→前臂→手腕依次发力，形成鞭打效应",
+          "weight": 3,
+          "why": "正手拉球完整动力链",
+          "missing_policy": "看不到蹬转时降低置信度"
+        },
+        {
+          "phase": "contact",
+          "cue": "接触球中上部，向前上方摩擦为主、撞击为辅",
+          "weight": 2,
+          "why": "拉球的触球特征",
+          "missing_policy": "标记为辅助线索"
+        }
+      ],
+      "negative_cues": [
+        {
+          "phase": "swing",
+          "cue": "无蹬转动作、仅前臂收缩、以撞击为主无摩擦",
+          "weight": 3,
+          "why": "更像正手攻球",
+          "missing_policy": "加入fh_drive作为候选"
+        }
+      ]
+    },
+    {
+      "id": "fh_block",
+      "title": "正手防弧圈球",
+      "aliases": [
+        "正手防",
+        "正手防守",
+        "正手挡",
+        "正手封",
+        "减力挡"
+      ],
+      "definition": "近台正手位借对方弧圈球力量进行封挡或减力控制的防御技术，动作极小、重在拍面前倾角度和借力",
+      "scope": {
+        "scenario": "对手强力拉冲至正手位时；来球上旋强烈速度快；近台站位；被动防守或伺机转攻",
+        "exclusions": [
+          "如果有明显引拍和主动向前发力，更可能是正手攻球或正手拉球"
+        ]
+      },
+      "positive_cues": [
+        {
+          "phase": "preparation",
+          "cue": "身体靠近球台，重心压低，含胸收腹",
+          "weight": 3,
+          "why": "正手防弧圈的典型准备姿态",
+          "missing_policy": "无法确认时降低置信度"
+        },
+        {
+          "phase": "contact",
+          "cue": "拍面显著前倾，以前臂迎球借力，无主动发力",
+          "weight": 3,
+          "why": "防弧圈核心特征",
+          "missing_policy": "无法确认时降低置信度"
+        },
+        {
+          "phase": "followup",
+          "cue": "击球后迅速还原，动作行程极短",
+          "weight": 1,
+          "why": "防守节奏特征",
+          "missing_policy": "标记为辅助线索"
+        }
+      ],
+      "negative_cues": [
+        {
+          "phase": "backswing",
+          "cue": "有明显引拍和主动向前挥拍动作",
+          "weight": 2,
+          "why": "更像正手攻球或拉球",
+          "missing_policy": "加入fh_drive或fh_loop作为候选"
+        }
+      ]
+    },
+    {
+      "id": "serve_spin",
+      "title": "下旋发球",
+      "aliases": [
+        "下旋发球",
+        "发球",
+        "发下旋",
+        "发球旋转",
+        "切球",
+        "发球技术"
+      ],
+      "definition": "利用球拍从球底部向前下方快速摩擦，使球产生强烈下旋的发球技术，是乒乓球最基础也是最重要的旋转发球",
+      "scope": {
+        "scenario": "每次发球轮次的基础选择；可用于第三板抢攻的战术配套；结合不转发球制造迷惑",
+        "exclusions": [
+          "如果拍面立起、从右侧向左侧摩擦球，可能是侧旋发球",
+          "如果手腕由内向外勾击，可能是勾手发球"
+        ]
+      },
+      "positive_cues": [
+        {
+          "phase": "contact",
+          "cue": "球拍从球底部向前下方快速摩擦，手腕有急促加速外展",
+          "weight": 3,
+          "why": "下旋发球的核心触球特征",
+          "missing_policy": "无法确认时降低置信度"
+        },
+        {
+          "phase": "preparation",
+          "cue": "球拍拍面略微放平或稍后仰，用拍头下半部分触球",
+          "weight": 2,
+          "why": "下旋发球的拍面准备",
+          "missing_policy": "标记为辅助线索"
+        },
+        {
+          "phase": "follow_through",
+          "cue": "发球后手腕有急促加速切球后的自然制动，手臂顺势向前做虚晃推送的假动作",
+          "weight": 1,
+          "why": "下旋发球后常见假动作，用于迷惑对手对旋转的判断，非核心线索",
+          "missing_policy": "有假动作可作为辅助加分项，假动作缺失不影响判断"
+        }
+      ],
+      "negative_cues": [
+        {
+          "phase": "contact",
+          "cue": "球拍拍面立起、从右侧向左摩擦球侧部",
+          "weight": 3,
+          "why": "更像侧旋或勾手发球",
+          "missing_policy": "标记为其他发球类型"
+        }
+      ]
+    },
+    {
+      "id": "hook_serve",
+      "title": "勾手发球",
+      "aliases": [
+        "勾手发球",
+        "勾手",
+        "勾式发球",
+        "侧旋发球"
+      ],
+      "definition": "侧身站位，手臂从腋下方向向外上方勾击球的中下部或侧下部，通过手腕爆发力产生侧上旋或侧下旋的发球技术",
+      "scope": {
+        "scenario": "需要发出强烈侧旋迷惑对手时；配合侧上和侧下旋变化；适合侧身站位",
+        "exclusions": [
+          "如果手腕是向前下方切球动作而非向外上方勾击，可能是下旋发球",
+          "如果手臂大幅外展像钟摆一样，可能是逆旋转发球"
+        ]
+      },
+      "positive_cues": [
+        {
+          "phase": "backswing",
+          "cue": "手臂向身体右后方腋下方向收拢，手腕下垂内收",
+          "weight": 3,
+          "why": "勾手发球的标志性引拍",
+          "missing_policy": "无法确认时降低置信度"
+        },
+        {
+          "phase": "swing",
+          "cue": "前臂和手腕迅速向外、向前上方勾击",
+          "weight": 3,
+          "why": "勾手发球的核心发力特征",
+          "missing_policy": "无法确认时降低置信度"
+        },
+        {
+          "phase": "contact",
+          "cue": "击球点靠近身体中心、在球台面附近高度出手",
+          "weight": 2,
+          "why": "勾手发球的击球位置特征",
+          "missing_policy": "标记为辅助线索"
+        }
+      ],
+      "negative_cues": [
+        {
+          "phase": "contact",
+          "cue": "手腕是从后向前切球而非向外勾击",
+          "weight": 3,
+          "why": "更像下旋发球",
+          "missing_policy": "加入serve_spin作为候选"
+        }
+      ]
+    },
+    {
+      "id": "reverse_pendulum_serve",
+      "title": "逆旋转发球",
+      "aliases": [
+        "逆旋转",
+        "逆旋转发球",
+        "反手发球",
+        "张继科发球",
+        "樊振东发球"
+      ],
+      "definition": "侧身站位，手腕内屈后由内向外撇击球侧部，配合腰部反向扭转，产生强烈侧旋的高隐蔽性发球技术",
+      "scope": {
+        "scenario": "需要高隐蔽性发球时；适合专业级发球抢攻；配合转与不转变化",
+        "exclusions": [
+          "如果手腕是从后向前切球而非由内向外撇击，更可能是下旋发球",
+          "如果手臂直接外展而非从内屈开始，可能是普通侧旋发球"
+        ]
+      },
+      "positive_cues": [
+        {
+          "phase": "backswing",
+          "cue": "前臂内收带拍引向腹前，手腕极致内屈，拍面朝向自己",
+          "weight": 3,
+          "why": "逆旋转发球的标志性引拍",
+          "missing_policy": "无法确认时降低置信度"
+        },
+        {
+          "phase": "swing",
+          "cue": "前臂由内向外挥动，手腕内屈转外展撇击球侧部",
+          "weight": 3,
+          "why": "逆旋转发球的核心特征",
+          "missing_policy": "无法确认时降低置信度"
+        },
+        {
+          "phase": "contact",
+          "cue": "腰部反向扭转配合手腕外撇，产生强烈侧旋",
+          "weight": 2,
+          "why": "逆旋转发球区别于普通侧旋的特征",
+          "missing_policy": "标记为辅助线索"
+        }
+      ],
+      "negative_cues": [
+        {
+          "phase": "swing",
+          "cue": "手臂直接外展而非从极度内屈开始",
+          "weight": 2,
+          "why": "更像普通侧旋发球",
+          "missing_policy": "标记为其他发球类型"
+        }
+      ]
+    },
+    {
+      "id": "receive",
+      "title": "接发球（搓球与摆短）",
+      "aliases": [
+        "接发球",
+        "搓球",
+        "摆短",
+        "接球",
+        "台内球",
+        "接发",
+        "吃发球"
+      ],
+      "definition": "处理台内短球的基础技术，搓球以前下方切击制造下旋，摆短是搓球的升级版以极短落点控制对手",
+      "scope": {
+        "scenario": "对方发短球时；台内球处理；需要控制落点时；过渡技术",
+        "exclusions": [
+          "如果来球出台且你引拍充分向上拉，就不是搓球而是拉球",
+          "如果手腕内扣外展发力而非切击，可能是拧拉"
+        ]
+      },
+      "positive_cues": [
+        {
+          "phase": "preparation",
+          "cue": "右脚迅速跨入台内，脚插到球下方，重心跟上去",
+          "weight": 3,
+          "why": "台内接发球的标准上步动作",
+          "missing_policy": "无法确认时降低置信度"
+        },
+        {
+          "phase": "contact",
+          "cue": "拍面稍后仰，从球中下部向前下方切击",
+          "weight": 3,
+          "why": "搓球的核心触球特征",
+          "missing_policy": "无法确认时降低置信度"
+        },
+        {
+          "phase": "contact",
+          "cue": "触球极薄且在球上升前期出手，触球后急刹车不送拍",
+          "weight": 3,
+          "why": "摆短区别于普通搓球的特征",
+          "missing_policy": "无法确认时降低置信度"
+        }
+      ],
+      "negative_cues": [
+        {
+          "phase": "swing",
+          "cue": "手腕内扣外展发力摩擦球侧上部",
+          "weight": 2,
+          "why": "更像拧拉而非搓球",
+          "missing_policy": "加入bh_flick作为候选"
+        }
+      ]
+    },
+    {
+      "id": "fh_flick",
+      "title": "正手挑打",
+      "aliases": [
+        "正手挑打",
+        "挑打",
+        "正手挑",
+        "台内挑",
+        "挑球"
+      ],
+      "definition": "台内正手位主动进攻技术，右脚迅速上步入台，手腕后展后快速前甩摩擦球中上部，制造突然的快速进攻",
+      "scope": {
+        "scenario": "台内正手位短球；来球多为下旋或弱上旋；常用于接发球抢攻、台内主动上手",
+        "exclusions": [
+          "如果来球明显出台且引拍幅度大、有蹬转动作，更可能是正手拉球",
+          "如果只是台内轻碰过去没有手腕发力，不是挑打",
+          "如果手腕内扣外展而非后展前甩，可能是拧拉"
+        ]
+      },
+      "positive_cues": [
+        {
+          "phase": "preparation",
+          "cue": "右脚迅速跨入台内，身体重心下沉前探，球拍引至右肩上方，手腕后展蓄力",
+          "weight": 3,
+          "why": "正手挑打的标志性准备动作",
+          "missing_policy": "无法确认时降低置信度"
+        },
+        {
+          "phase": "swing",
+          "cue": "手腕从后展位置快速前甩，配合前臂小幅收展，摩擦球中上部",
+          "weight": 3,
+          "why": "挑打的核心发力特征",
+          "missing_policy": "无法确认时降低置信度"
+        },
+        {
+          "phase": "contact",
+          "cue": "在球弹起上升期或最高点击球，出手突然，动作短促爆发",
+          "weight": 2,
+          "why": "挑打的节奏特征",
+          "missing_policy": "标记为辅助线索"
+        }
+      ],
+      "negative_cues": [
+        {
+          "phase": "backswing",
+          "cue": "引拍幅度大、腰部有明显转体、手臂后引至身体后方",
+          "weight": 3,
+          "why": "更像正手拉球而非挑打",
+          "missing_policy": "加入fh_loop作为候选"
+        },
+        {
+          "phase": "contact",
+          "cue": "手腕内扣外展而非后展前甩",
+          "weight": 2,
+          "why": "更像反手拧拉",
+          "missing_policy": "加入bh_flick作为候选"
+        }
+      ]
+    },
+    {
+      "id": "serve_nospin",
+      "title": "不转发球",
+      "aliases": [
+        "不转发球",
+        "不转",
+        "发不转",
+        "无旋转发球"
+      ],
+      "definition": "与下旋发球动作相似但触球时不加摩擦，用拍面撞击球中部推出，制造不转球以迷惑对手的发球技术",
+      "scope": {
+        "scenario": "与下旋发球搭配使用；对手已适应下旋时突然变化；高水平和业余通用战术",
+        "exclusions": [
+          "如果触球瞬间有明显切球或摩擦动作，更可能是下旋发球",
+          "如果出手动作与下旋发球完全相同但拍面撞击而非摩擦，才是不转发球"
+        ]
+      },
+      "positive_cues": [
+        {
+          "phase": "contact",
+          "cue": "球拍拍面立起或微前倾，用拍面撞击球的中部或中上部，触球瞬间无摩擦切削动作",
+          "weight": 3,
+          "why": "不转发球的核心判别标志",
+          "missing_policy": "无法确认触球细节时降低置信度"
+        },
+        {
+          "phase": "preparation",
+          "cue": "准备动作与下旋发球几乎相同，引拍和身体姿态一致",
+          "weight": 2,
+          "why": "不转发球的战术隐蔽性来源",
+          "missing_policy": "标记为辅助线索"
+        },
+        {
+          "phase": "ball_flight",
+          "cue": "球飞行弧线相对较平直，落台后无明显减速或回跳，向前冲力较强",
+          "weight": 2,
+          "why": "不转球的飞行特征",
+          "missing_policy": "标记为辅助线索"
+        }
+      ],
+      "negative_cues": [
+        {
+          "phase": "contact",
+          "cue": "触球瞬间有从球底部向前下方的快速切球动作",
+          "weight": 3,
+          "why": "更像下旋发球",
+          "missing_policy": "加入serve_spin作为候选"
+        },
+        {
+          "phase": "ball_flight",
+          "cue": "球落台后明显回跳或减速下坠",
+          "weight": 2,
+          "why": "更像下旋发球",
+          "missing_policy": "加入serve_spin作为候选"
+        }
+      ]
+    }
+  ],
+  "confusion_matrix": [
+    {
+      "action_id": "bh_drive",
+      "confusable_with": "bh_loop",
+      "key_difference": "拨球动作小且向前多；反手拉球引拍更充分、向上摩擦更多",
+      "secondary_difference": "拉球随挥更完整，核心参与更明显",
+      "required_visible_info": [
+        "引拍幅度",
+        "挥拍方向",
+        "触球阶段"
+      ],
+      "low_confidence_policy": "同时输出top2候选，不进入强诊断",
+      "prompt_snippet": "如果引拍和触球方向不可见，不要在bh_drive与bh_loop间强判。"
+    },
+    {
+      "action_id": "bh_drive",
+      "confusable_with": "bh_flick",
+      "key_difference": "拧拉多处理台内短球，手腕内扣外展明显；拨球更偏近台出台球衔接",
+      "secondary_difference": "拧拉肘部支点更突出",
+      "required_visible_info": [
+        "球是否台内",
+        "手腕动作",
+        "肘部位置"
+      ],
+      "low_confidence_policy": "标记uncertain，要求更清晰侧前方视角",
+      "prompt_snippet": "看不到球台短长时，不要高置信度识别bh_flick。"
+    },
+    {
+      "action_id": "fh_drive",
+      "confusable_with": "fh_loop",
+      "key_difference": "攻球引拍极小、撞击为主；拉球引拍幅度大、蹬转充分、向上摩擦明显",
+      "secondary_difference": "拉球收臂至眉心位置，攻球前臂快速收缩",
+      "required_visible_info": [
+        "引拍幅度",
+        "蹬转动作",
+        "挥拍方向"
+      ],
+      "low_confidence_policy": "同时输出top2候选，不进入强诊断",
+      "prompt_snippet": "如果看不到腰部转动和手臂后引幅度，不要在fh_drive与fh_loop间强判。"
+    },
+    {
+      "action_id": "bh_flick",
+      "confusable_with": "bh_loop",
+      "key_difference": "拧拉处理台内球、手腕内扣外展；拉球处理出台球、顶肘鞭打",
+      "secondary_difference": "拧拉发力更集中在手腕，拉球动力链更长",
+      "required_visible_info": [
+        "球是否出台",
+        "手腕动作类型"
+      ],
+      "low_confidence_policy": "标记uncertain",
+      "prompt_snippet": "球台短长不可见时不要强判bh_flick。"
+    },
+    {
+      "action_id": "bh_block",
+      "confusable_with": "bh_drive",
+      "key_difference": "防弧圈几乎无引拍、借力为主；拨球有前臂弹击、主动发力",
+      "secondary_difference": "防守站位更靠前、重心更低",
+      "required_visible_info": [
+        "引拍是否存在",
+        "是否主动发力"
+      ],
+      "low_confidence_policy": "标记uncertain",
+      "prompt_snippet": "如果无法判断是否有主动发力，不要强判。"
+    },
+    {
+      "action_id": "fh_block",
+      "confusable_with": "fh_drive",
+      "key_difference": "防弧圈拍面显著前倾（接近水平）借力封堵，无主动前臂收缩；攻球拍面仅稍前倾（约45°），前臂有明显主动收缩加速",
+      "secondary_difference": "防弧圈时含胸收腹重心明显低于攻球准备姿态；攻球时腰部有小幅度转动配合",
+      "required_visible_info": [
+        "拍面前倾角度",
+        "前臂是否有收缩加速",
+        "重心高低"
+      ],
+      "low_confidence_policy": "标记uncertain，提示用户提供侧前方视角重拍",
+      "prompt_snippet": "如果拍面角度和前臂动作都不可见，不要在fh_block与fh_drive之间强判。防守和进攻的身体语言截然不同：防守是\"吸收力量\"，进攻是\"输出力量\"。"
+    },
+    {
+      "action_id": "hook_serve",
+      "confusable_with": "serve_spin",
+      "key_difference": "勾手发球引拍时手臂向腋下方向回收、手腕下垂内收，挥拍轨迹从内下方向外上方勾击球侧部产生侧旋；下旋发球引拍在身体正前方或略偏右，挥拍轨迹向前下方切击球底部产生纯下旋",
+      "secondary_difference": "勾手发球后身体自然回正，球过网后有明显侧拐；下旋发球球路更直，落台后有明显回跳或减速",
+      "required_visible_info": [
+        "引拍手臂位置（腋下vs体前）",
+        "手腕发力方向（外上勾vs前下切）",
+        "球飞行弧线"
+      ],
+      "low_confidence_policy": "标记uncertain，建议从接球方侧前方重拍以便看清出手瞬间",
+      "prompt_snippet": "判断勾手和下旋的第一眼：看手臂引拍终点在哪。腋下=勾手，体前=下旋。再看球过网后的弧线，侧拐=勾手，直线或回跳=下旋。"
+    },
+    {
+      "action_id": "reverse_pendulum_serve",
+      "confusable_with": "hook_serve",
+      "key_difference": "逆旋转发球手腕从极度内屈（拍面朝向自己身体）开始，由内向外撇击，同时腰部反向扭转配合；勾手发球手腕从下垂内收开始，由下向上勾击，腰部小幅左转配合",
+      "secondary_difference": "逆旋转发球准备时拍头指向身体左侧，动作幅度大、身体有明显反向扭转；勾手发球准备时拍头指向地面，动作更紧凑、发力方向更向上",
+      "required_visible_info": [
+        "手腕起始姿态（内屈vs下垂）",
+        "挥拍方向（内→外撇vs下→上勾）",
+        "腰部扭转方向"
+      ],
+      "low_confidence_policy": "标记uncertain，建议从正后方或正侧方拍摄以便看清手腕起始姿态",
+      "prompt_snippet": "区分逆旋转和勾手的关键看手腕：逆旋转是\"甩鞭子\"从内往外撇，勾手是\"掏口袋\"从下往上勾。腰部也是一个提示：反向扭腰=逆旋转。"
+    },
+    {
+      "action_id": "bh_flick",
+      "confusable_with": "receive",
+      "key_difference": "拧拉手腕内扣后外展发力摩擦球侧上部，制造侧上旋，有主动进攻意图；搓球拍面后仰、向前下方切击球中下部，回球下旋，属于控制过渡",
+      "secondary_difference": "拧拉肘部明显架起前顶，搓球肘部贴近身体；拧拉挥拍轨迹为弧形，搓球为直线",
+      "required_visible_info": [
+        "手腕动作类型（内扣外展vs固定后仰）",
+        "肘部位置",
+        "回球旋转方向"
+      ],
+      "low_confidence_policy": "标记uncertain，建议重拍时确保看清手腕和触球部位",
+      "prompt_snippet": "台内球处理的关键区分：手腕\"拧\"是拧拉，手腕\"切\"是搓球。回球上台后看旋转：往上蹦=拧拉侧上旋，往下坠=搓球下旋。"
+    },
+    {
+      "action_id": "fh_loop",
+      "confusable_with": "fh_block",
+      "key_difference": "正手拉球有完整的蹬转引拍动力链，主动发力制造上旋；正手防弧圈几乎无引拍，拍面前倾借力封挡，被动力求控制",
+      "secondary_difference": "拉球身体重心由后向前转移明显，防弧圈重心压低原地应对",
+      "required_visible_info": [
+        "是否有蹬转引拍",
+        "是否有主动收臂发力",
+        "身体重心移动"
+      ],
+      "low_confidence_policy": "同时输出top2候选，不进入强诊断",
+      "prompt_snippet": "正手位的\"攻\"和\"守\"区分看动力链完整性：有蹬转=拉球，无蹬转纯借力=防弧圈。重心向前冲=拉球，重心原地蹲=防弧圈。"
+    },
+    {
+      "action_id": "bh_loop",
+      "confusable_with": "bh_block",
+      "key_difference": "反手拉球有充分引拍（至腹前偏下）、顶肘鞭打、主动向上向前制造上旋；反手防弧圈几乎无引拍、手腕固定、拍面前倾借力封挡",
+      "secondary_difference": "拉球挥拍行程大、随挥完整，防弧圈行程极小、触球即停",
+      "required_visible_info": [
+        "引拍幅度",
+        "是否主动向前向上发力",
+        "挥拍行程"
+      ],
+      "low_confidence_policy": "标记uncertain",
+      "prompt_snippet": "反手位攻防区分：球拍\"拉起来\"=拉球，球拍\"摆在那里\"=防弧圈。行程大且伴随身体转动=拉球，行程极小原地挡=防弧圈。"
+    },
+    {
+      "action_id": "serve_spin",
+      "confusable_with": "reverse_pendulum_serve",
+      "key_difference": "下旋发球从球底部向前下方切击，拍面后仰，产生纯下旋；逆旋转发球手腕内屈后由内向外撇击球侧部，配合腰部反向扭转，产生强烈侧旋",
+      "secondary_difference": "下旋发球发球后球落台有明显回跳或减速；逆旋转发球落台后球向侧方拐弯",
+      "required_visible_info": [
+        "手腕起始姿态（内屈vs自然）",
+        "挥拍轨迹方向（内→外撇vs前→下切）",
+        "球落台后行为"
+      ],
+      "low_confidence_policy": "标记uncertain，建议从侧前方拍摄看清手腕动作",
+      "prompt_snippet": "区分下旋和逆旋转：下旋发球手在球后面切，逆旋转手从自己身体这侧往外撇。球落台后回跳=下旋，侧拐=逆旋转。"
+    },
+    {
+      "action_id": "receive",
+      "confusable_with": "bh_drive",
+      "key_difference": "搓球/摆短处理台内短球，右脚上步入台，拍面后仰切击球下部制造下旋；拨球处理出台球，近台站位，前臂以肘为轴向前弹击，撞击为主",
+      "secondary_difference": "搓球回球低且贴网，下旋强；拨球回球速度快、弧线平直",
+      "required_visible_info": [
+        "球是否出台",
+        "上步动作",
+        "拍面角度（后仰vs前倾）",
+        "发力方向（切vs弹）"
+      ],
+      "low_confidence_policy": "标记uncertain，建议拍清球是否出台以及球员站位",
+      "prompt_snippet": "先看球出台没有：台内+拍面后仰+切=搓球，出台+拍面前倾+弹击=拨球。搓球是\"卸力控制\"，拨球是\"发力进攻\"。"
+    },
+    {
+      "action_id": "fh_flick",
+      "confusable_with": "fh_drive",
+      "key_difference": "挑打处理台内球，右脚必须上步入台，手腕后展前甩爆发力强、动作短促；攻球处理出台球，中近台站位，以腰带手、前臂收缩为主",
+      "secondary_difference": "挑打发力更集中在手腕前臂短促爆发，攻球有腰部带动；挑打回球突然性更强",
+      "required_visible_info": [
+        "球是否台内",
+        "是否有上步动作",
+        "手腕发力方式"
+      ],
+      "low_confidence_policy": "标记uncertain，合并输出top2",
+      "prompt_snippet": "台内/出台是第一判断：台内先上步=挑打，出台正常站位=攻球。"
+    },
+    {
+      "action_id": "fh_flick",
+      "confusable_with": "fh_loop",
+      "key_difference": "挑打台内、手腕后展前甩、动作短促；拉球出台、蹬转引拍充分、挥拍行程大",
+      "secondary_difference": "挑打随挥极少，拉球收臂至眉心、随挥完整",
+      "required_visible_info": [
+        "球是否出台",
+        "引拍幅度",
+        "是否有蹬转"
+      ],
+      "low_confidence_policy": "标记uncertain",
+      "prompt_snippet": "台内短促=挑打，出台舒展=拉球。"
+    },
+    {
+      "action_id": "receive",
+      "confusable_with": "fh_flick",
+      "key_difference": "搓球拍面后仰切击制造下旋，控制为主；挑打手腕后展前甩摩擦制造快速进攻",
+      "secondary_difference": "搓球重心稳追求落点控制，挑打重心前冲追求速度",
+      "required_visible_info": [
+        "拍面角度（后仰vs立起）",
+        "手腕发力方向（切vs甩）",
+        "回球速度"
+      ],
+      "low_confidence_policy": "标记uncertain",
+      "prompt_snippet": "搓球是\"稳\"，挑打是\"凶\"。拍面后仰切=搓，手腕前甩摩擦=挑。"
+    },
+    {
+      "action_id": "serve_nospin",
+      "confusable_with": "serve_spin",
+      "key_difference": "不转发球触球瞬间用拍面撞击球中部，无摩擦；下旋发球从球底部向前下方快速切球，有强烈摩擦",
+      "secondary_difference": "不转球的球飞行更直，落台后无减速；下旋发球落台后有明显回跳或减速",
+      "required_visible_info": [
+        "触球瞬间是否有摩擦",
+        "球落台后是否有减速回跳"
+      ],
+      "low_confidence_policy": "需要慢动作/高帧率视频才能准确区分，否则标记uncertain",
+      "prompt_snippet": "这是乒乓球最难区分的发球对之一。触球瞬间必须看得非常清楚才能判断。看不到触球细节时，不要强判，可提示\"需要高帧率拍摄\"。"
+    }
+  ],
+  "downgrade_rules": [
+    {
+      "scope": "global",
+      "rule_type": "visibility",
+      "condition": "看不到触球瞬间",
+      "affects": "所有技术动作识别",
+      "system_action": "lower_confidence",
+      "user_message": "请尽量拍到击球前后完整动作。"
+    },
+    {
+      "scope": "global",
+      "rule_type": "table_visibility",
+      "condition": "看不到球台，无法判断台内/出台",
+      "affects": "台内技术、拉球/拨球区分",
+      "system_action": "unknown",
+      "user_message": "请把球台和击球点一起拍进画面。"
+    },
+    {
+      "scope": "action",
+      "action_id": "bh_flick",
+      "rule_type": "visibility",
+      "condition": "看不到手腕内扣到外展过程",
+      "affects": "反手拧拉识别",
+      "system_action": "lower_confidence",
+      "user_message": "反手拧拉需要拍清手腕和肘部支点。"
+    },
+    {
+      "scope": "global",
+      "rule_type": "camera_angle",
+      "condition": "拍摄角度为正后方（球员后背正对镜头），看不见拍面、手腕动作和触球瞬间",
+      "affects": "所有技术动作识别，尤其是台内技术和发球",
+      "system_action": "unknown",
+      "user_message": "请从侧前方（右前方45°）拍摄，确保能看到球拍、手腕和触球点。正后方视角无法判断技术动作。"
+    },
+    {
+      "scope": "global",
+      "rule_type": "camera_angle",
+      "condition": "拍摄角度为正面（正对球员面部），球台和击球动作被球员身体遮挡",
+      "affects": "所有技术动作识别",
+      "system_action": "unknown",
+      "user_message": "请从侧前方或侧方拍摄，不要从正前方正对球员。"
+    },
+    {
+      "scope": "global",
+      "rule_type": "frame_rate",
+      "condition": "视频帧率低于30fps，触球瞬间可能丢失或模糊",
+      "affects": "所有涉及快速动作的技术识别，尤其是发球、触球瞬间判断",
+      "system_action": "lower_confidence",
+      "user_message": "建议使用至少60fps拍摄，触球瞬间是判断技术动作的最关键画面。"
+    },
+    {
+      "scope": "global",
+      "rule_type": "visibility",
+      "condition": "球员身体或球台遮挡了关键身体部位（手腕、肘部、腰部）",
+      "affects": "涉及遮挡部位的所有动作识别",
+      "system_action": "lower_confidence",
+      "user_message": "请确保拍摄角度能完整看到球员的引拍、触球和随挥全过程，避免身体遮挡。"
+    },
+    {
+      "scope": "global",
+      "rule_type": "table_visibility",
+      "condition": "球台只部分可见，无法判断球是否出台或落点区域",
+      "affects": "台内/出台判断、落点分析",
+      "system_action": "lower_confidence",
+      "user_message": "请把完整球台拍进画面，确保能看到球的落点和球台端线。"
+    },
+    {
+      "scope": "global",
+      "rule_type": "ball_visibility",
+      "condition": "球速太快、球太小或视频分辨率太低，球的轨迹无法追踪",
+      "affects": "所有动作的触球阶段判断、球飞行弧线分析",
+      "system_action": "lower_confidence",
+      "user_message": "建议提高分辨率（至少1080P）和帧率（至少60fps），确保能看清球的轨迹。"
+    },
+    {
+      "scope": "action",
+      "action_id": "serve_spin",
+      "rule_type": "visibility",
+      "condition": "看不到球拍触球的瞬间",
+      "affects": "发球旋转判断、下旋/不转区分",
+      "system_action": "unknown",
+      "user_message": "发球旋转判断必须看到球拍触球瞬间。请用高帧率从侧前方拍摄，确保球拍和球的接触画面清晰。"
+    },
+    {
+      "scope": "action",
+      "action_id": "serve_nospin",
+      "rule_type": "visibility",
+      "condition": "看不到球拍触球的瞬间",
+      "affects": "发球旋转判断、下旋/不转区分",
+      "system_action": "unknown",
+      "user_message": "不转发球与下旋发球的区分完全依赖触球瞬间是否有摩擦，看不到触球瞬间无法判断。"
+    },
+    {
+      "scope": "action",
+      "action_id": "hook_serve",
+      "rule_type": "visibility",
+      "condition": "看不到手腕和手臂的完整引拍轨迹",
+      "affects": "勾手发球 vs 下旋发球 vs 逆旋转发球的区分",
+      "system_action": "lower_confidence",
+      "user_message": "勾手发球的识别需要看清手臂从腋下到挥出的完整轨迹，建议从侧前方拍摄。"
+    },
+    {
+      "scope": "action",
+      "action_id": "reverse_pendulum_serve",
+      "rule_type": "visibility",
+      "condition": "看不到手腕的起始姿态（内屈程度）",
+      "affects": "逆旋转发球 vs 勾手发球 vs 普通侧旋发球的区分",
+      "system_action": "lower_confidence",
+      "user_message": "逆旋转发球依赖手腕内屈程度来判断，请确保手腕起始姿态可见。"
+    }
+  ]
+}

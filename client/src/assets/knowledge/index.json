@@ -193,6 +193,31 @@
         "发球抢攻",
         "吃发球"
       ]
+    },
+    {
+      "id": "fh_flick",
+      "title": "正手挑打",
+      "category": "actions",
+      "file": "actions/fh_flick.md",
+      "keywords": [
+        "正手挑打",
+        "挑打",
+        "正手挑",
+        "台内挑",
+        "挑球"
+      ]
+    },
+    {
+      "id": "serve_nospin",
+      "title": "不转发球",
+      "category": "actions",
+      "file": "actions/serve_nospin.md",
+      "keywords": [
+        "不转发球",
+        "不转",
+        "发不转",
+        "无旋转发球"
+      ]
     }
   ]
 }
