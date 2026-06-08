@@ -7,8 +7,11 @@ dist/
 backups/
 temp_update/
 old_env_check/
-*.db-shm
-*.db-wal
 # 用户上传的视频文件（Phase 2-A）
 server/uploads/*
 !server/uploads/.gitkeep
+
+# SQLite 数据库文件（本地运行产生，不提交）
+*.db
+*.db-shm
+*.db-wal

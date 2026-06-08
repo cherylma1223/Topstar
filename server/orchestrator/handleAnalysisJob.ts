@@ -63,10 +63,13 @@ const SEGMENT_IDENTIFICATION_PROMPT = `你是一名专业乒乓球视频分析�
 有效片段包括：正式回合、练习击球、发球练习、多球训练等包含实际击球动作的片段。
 需要过滤掉的无效片段：捡球、等待、休息、聊天、走动、调整器材、失误后的停顿等。
 
+【重要】description 只描述场景类型（如"多球训练"、"单球对练"、"发球练习"、"比赛回合"），
+不要描述具体技术动作名称（如正手、反手、攻球、拉球等），技术识别由后续环节负责。
+
 请严格按以下 JSON 格式输出（只输出 JSON，不要其他文字）：
 {
   "segments": [
-    { "start": "mm:ss", "end": "mm:ss", "description": "片段内容简述" }
+    { "start": "mm:ss", "end": "mm:ss", "description": "场景类型简述" }
   ],
   "total_valid_seconds": 数字
 }
@@ -76,7 +79,7 @@ const SEGMENT_IDENTIFICATION_PROMPT = `你是一名专业乒乓球视频分析�
 
 function buildPass2Prompt(analysisType: string, segments: VideoSegment[], decision?: DecisionAction): string {
   const segmentList = segments
-    .map(s => `- ${s.start}-${s.end}：${s.description || '有效回合'}`)
+    .map(s => `- ${s.start}-${s.end}`)
     .join('\n');
 
   if (analysisType === 'technique') {
@@ -420,6 +423,7 @@ async function uploadAndAnalyzeVideo(
     const model = pass1Result.model;
 
     const rawPass1 = extractJson(pass1Response.text || '');
+    console.log(`[handleAnalysisJob] Pass 1 raw output:\n`, JSON.stringify(rawPass1, null, 2));
     if (!rawPass1) {
       throw new Error(ERROR_CODES.REPORT_PARSE_FAILED + ':pass1');
     }
@@ -475,6 +479,7 @@ async function uploadAndAnalyzeVideo(
       finalModel = pass2Result.model;
 
       const rawPass2 = extractJson(pass2Response.text || '');
+      console.log(`[handleAnalysisJob] Pass 2 raw output:\n`, JSON.stringify(rawPass2, null, 2));
       if (!rawPass2) {
         throw new Error(ERROR_CODES.REPORT_PARSE_FAILED + ':pass2');
       }

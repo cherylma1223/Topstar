@@ -6,7 +6,7 @@
 
 | 文件 | 用途 |
 |---|---|
-| `table_tennis_action_knowledge_v1.xlsx` | 给专业乒乓球教练填写的 Excel 模板。用于沉淀技术动作定义、视频识别线索、易混淆动作区分、降级规则和诊断规则。 |
+| `table_tennis_action_knowledge_v2.xlsx` | 给专业乒乓球教练填写的 Excel 模板。用于沉淀技术动作定义、视频识别线索、易混淆动作区分、降级规则和诊断规则。 |
 
 ## Excel 模板怎么用
 

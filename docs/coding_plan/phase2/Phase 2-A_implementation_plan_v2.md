@@ -9,6 +9,7 @@
 | 2026-06-07 | 标记待补充任务 | 需要在后续正文中进一步补充：Excel 清洗任务、严格校验细则、报告字段扩展、前端展示任务，以及弱化 Markdown fallback 的生产定位。 |
 | 2026-06-07 | 对齐最新知识源边界 | 设计文档已明确 `actions/*.md` 是用户教学输出内容源，Excel/JSON 是视频识别规则源；implementation plan 中的 Markdown fallback 需要按此边界重新收敛。 |
 | 2026-06-07 | **同步 V2 Excel 审核结果** | 教练已提供包含 13 个动作的 v2 Excel。更新文件引用，并将 Markdown Fallback 从“防卡死机制”降级为“开发调试机制”。增加任务：同步 `fh_flick`、`serve_nospin` 到 index.json。 |
+| 2026-06-08 | 修复上游污染 (Upstream Contamination) | 修改 `handleAnalysisJob.ts` 和 `techniqueClassifier.ts`，彻底阻断 Pass 1 `description` 流入 Pass 1.5 和 Pass 2 的 Prompt，并约束 Pass 1 仅描述场景，防止技术锚定效应导致错判。 |
 
 ---
 
@@ -92,9 +93,9 @@
 #### [MODIFY] [handleAnalysisJob.ts](file:///Users/yingdongma/Documents/Dev/projects/Topstar/server/orchestrator/handleAnalysisJob.ts)
 - 重构 `uploadAndAnalyzeVideo` 执行流：
   1. Pass 1 找出 `validSegments`。
-  2. 调用 `classifyTechnique` 执行 Pass 1.5 识别。
+  2. 调用 `classifyTechnique` 执行 Pass 1.5 识别（注意切断 Pass 1 description 传入防锚定）。
   3. 通过 `recognitionDecision` 得到分析模式（`confirmed`, `tentative`, `unknown` 等）。
-  4. 构造 Pass 2 Prompt 并约束输出：
+  4. 构造 Pass 2 Prompt（同理剥离 description 防污染）并约束输出：
      - 若为 `unknown`，Prompt 要求模型：禁止强猜诊断；只分析画面质量（不可见原因），并给出具体的“拍摄改进建议”；
      - 若为已确认或疑似动作，Prompt 指导模型：聚焦分析该 `primary_action_id` 的动作规范，不要偏离；
   5. 教程推荐逻辑：只使用通过校验的 `primary_action_id`。如果为 `unknown` 则不推荐具体动作教程。

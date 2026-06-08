@@ -16,6 +16,7 @@
 | 2026-06-07 | **v2 Excel 审核通过** | 教练已提交 `table_tennis_action_knowledge_v2.xlsx`：13 个动作（+`fh_flick`/`serve_nospin`）、54 条识别线索、17 对混淆矩阵、13 条降级规则、35 条诊断规则。v1 中标注的质量门槛问题（非法 phase、降级规则偏少、`receive` 缺混淆矩阵等）已在 v2 中基本解决。知识数据已达到启动全链路工程开发的质量标准。 |
 | 2026-06-07 | 更新知识源文件引用 | 全文将 Excel 数据源引用从 `_v1.xlsx` 更新为 `_v2.xlsx`；同步标记需要新增 `fh_flick`、`serve_nospin` 到 `index.json` 和 `actions/*.md`。 |
 | 2026-06-07 | 更新 Markdown fallback 定位 | 由于 v2 Excel 已全面覆盖 13 个动作的识别/诊断规则，Markdown fallback 降级为“开发调试用途”，不再作为生产环境的必要保障路径。 |
+| 2026-06-08 | 修复 Pass 1 上游污染问题 | 约束 Pass 1 仅输出场景描述，并阻断其 description 传入 Pass 1.5/Pass 2 的 prompt，防止由于 Pass 1 自由发挥带来的锚定效应（例如将反手拉球误判为正手击球练习）。 |
 
 ---
 

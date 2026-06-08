@@ -60,7 +60,7 @@ export async function classifyTechnique(
   });
 
   const segmentList = segments
-    .map(s => `- ${s.start}-${s.end}：${s.description || '待识别片段'}`)
+    .map(s => `- ${s.start}-${s.end}`)
     .join('\n');
 
   knowledgePrompt += `\n\n请分析以下视频片段：\n${segmentList}\n`;
@@ -102,6 +102,7 @@ export async function classifyTechnique(
   // 3. Parse JSON
   try {
     const rawResult = JSON.parse(responseText);
+    console.log(`[Pass 1.5] Raw output:\n`, JSON.stringify(rawResult, null, 2));
     const result: ClassificationResult = {
       primary_action_id: rawResult.primary_action_id || 'unknown',
       confidence: typeof rawResult.confidence === 'number' ? rawResult.confidence : 0,
