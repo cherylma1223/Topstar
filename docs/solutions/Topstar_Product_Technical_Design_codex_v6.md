@@ -19,6 +19,8 @@
 | 2026-05-02 | v1.8 | 基于意图识别层重构提案 (intent_design_v2.md) 升级：引入多层意图结构 (Domain/Task/Response Mode)、增强型 Entities、三段式识别流程及 Policy 修正层。 |
 | 2026-05-19 | v1.9 | 新增第 18.5 节前端视频处理与播放设计，定义首帧自动提取与本地 Blob 即时播放。 |
 | 2026-06-08 | v1.10 | 修复视频分析上游污染问题：彻底阻断 Pass 1 片段描述（如"正手击球练习"）流入后续的技术分类（Pass 1.5）和诊断（Pass 2）阶段，消除模型锚定效应导致错判的隐患。 |
+| 2026-06-11 | v1.11 | 新增第 18.6 节视频帧率采样优化，利用 Gemini 原生 `videoMetadata.fps` 参数，将关键 Pass 采样率提升至 2-5fps，解决大模型 1fps 默认抽帧导致的动作误判问题。取代旧有的 FFmpeg 时间拉伸方案。 |
+| 2026-06-11 | v1.12 | 新增第 18.7 节视频分析本地结构化日志记录，引入 `VideoAnalysisLogger` 捕获分析流水线各阶段的请求入参、AI 原始 JSON 及评估和清理明细，日志追加写入本地 `server/video_analysis.log`。 |
 
 ---
 
@@ -742,6 +744,9 @@ export function scoreCandidate(tutorial: Tutorial, tags: string[]): number {
 5. 教程推荐质量因 quality_score 缺失而打折（新增）
    - 详细解决方案见第 19 节（推荐质量冷启动）
    - 简述：结构化信号冷启动自动评分 + 点击率持续调权
+6. 视频帧率采样过粗导致动作识别失败（新增）
+   - 详细解决方案见第 18.6 节（视频帧率采样优化）
+   - 简述：利用 Gemini 原生 `videoMetadata.fps` 将关键 Pass 的采样率提升至 2-5fps
 ---
 
 ## 15. 附录：推荐的服务端模块拆分（目录建议）
@@ -1133,6 +1138,11 @@ ffmpeg -i input.mp4 -vf "fps=1,scale=480:-1" -t 180 -c:v libx264 -crf 28 output_
 ```bash
 # .env
 VIDEO_ANALYSIS_STAGE=A   # A | B | C
+
+# 视频分析各 Pass 的采样帧率
+VIDEO_FPS_PASS1=2
+VIDEO_FPS_PASS15=5
+VIDEO_FPS_PASS2=5
 ```
 
 编排层根据此变量选择处理函数，无需改代码：
@@ -1173,6 +1183,53 @@ const processor = {
    - 用户点击视频封面时，使用原生 `<video>` 标签在当前应用内沉浸式播放，实现无需等待后端落盘即可预览的体验。
 
 > 注：因 Blob URL 仅在当前会话生命周期内有效，此方案适用于“即时会话”场景；若后续需支持历史记录持久化播放，需在后端暴露静态资源路由并下发真实的 CDN/访问链接以替换 Blob URL。
+
+### 18.6 视频帧率采样优化（Video Frame Rate Optimization）
+
+即使我们在 Pass 1.5 中注入了完善的动作识别规则，模型仍可能出现严重误判。其根本原因之一是 Gemini Files API 默认的视频抽样率为 **1 帧/秒**。在 1fps 下，模型大概率完全漏掉 0.2~0.3s 挥拍动作中的关键帧，导致缺乏视觉证据只能瞎猜。
+
+我们放弃早期的“服务端 FFmpeg 4倍慢放拉伸”方案（成本高、引入系统依赖、需重映射时间戳），改为使用 Gemini API 原生的 `videoMetadata.fps` 参数，在文件上传后针对不同 Pass 动态配置采样帧率。
+
+**分 Pass 帧率策略：**
+
+| Pass | 环节 | 建议 FPS | 理由 | 环境变量 |
+|---|---|---|---|---|
+| **Pass 1** | 有效片段识别 | **2 fps** | 只需区分“打球 vs 休息”等宏观场景。 | `VIDEO_FPS_PASS1` |
+| **Pass 1.5** | 技术动作识别 | **5 fps** | 需要捕捉引拍方向、击球点位置等分类特征。5fps 足以在 0.2s 挥拍中捕捉到关键帧。 | `VIDEO_FPS_PASS15` |
+| **Pass 2** | 技术诊断 | **5 fps** | 需要看清手腕角度、重心转移等精细问题。 | `VIDEO_FPS_PASS2` |
+
+**降级兜底：**
+部分 `@google/genai` 版本在使用 `videoMetadata.fps` 时可能抛出 `extra_forbidden` 错误。在部署初期代码层面应加入 try-catch：如捕捉到相关错误，自动降级为不带 `videoMetadata` 参数的请求模式，保证分析服务可用。
+
+### 18.7 视频分析本地结构化日志记录（Video Analysis Pipeline Logging）
+
+为提升视频分析流水线异步任务运行时的可观测性，引入 `VideoAnalysisLogger` 模块进行就地诊断记录。
+
+#### 18.7.1 日志存储与容错
+- **文件路径**：`server/video_analysis.log`
+- **写入行为**：在每次执行视频分析任务时，系统会在此文件中追加（Append）运行状态。
+- **物理隔离与容错**：写入过程包裹于独立的 `try-catch` 块中，文件系统写入错误绝不抛出导致任务流程挂起或中断。
+
+#### 18.7.2 全阶段日志 Stage 设计
+
+| Stage | 等级 | 说明与 Payload 内容 |
+|---|---|---|
+| `JOB_START` | INFO | 任务启动。记录 Job ID、视频文件绝对路径、分析模式与视频长度信息。 |
+| `GEMINI_UPLOAD_START` | INFO | 开始上传。记录上传 MimeType 与文件名。 |
+| `GEMINI_UPLOAD_SUCCESS` | INFO | 上传成功。记录 Gemini API 返回的文件唯一 `name`。 |
+| `GEMINI_PROCESSING_POLL`| INFO | 处理状态。记录 Gemini Files API 的 ACTIVE 状态轮询过程。 |
+| `PASS1_START` | INFO | 开始 Pass 1。记录请求的帧率与所用 Model。 |
+| `PASS1_OUTPUT` | INFO | Pass 1 响应。记录 Gemini 返回的有效片段原始 JSON。 |
+| `PASS1_VALIDATED` | INFO | 校验片段。记录通过合法性/时长过滤后的最终有效片段数组。 |
+| `PASS1.5_START` | INFO | 开始 Pass 1.5。记录分类帧率、动作候选库数量及所用 Model。 |
+| `PASS1.5_OUTPUT` | INFO | Pass 1.5 响应。记录 Gemini 分类输出的原始 JSON（包括置信度、动作特征证据）。 |
+| `DECISION` | INFO | 置信度判定。记录分析后的 `status`（`confirmed` / `tentative` 等）及最终的 `validated_action_id`。 |
+| `PASS2_START` | INFO | 开始 Pass 2。记录合并后的诊断 Prompt、约束规则等。 |
+| `PASS2_OUTPUT` | INFO | Pass 2 响应。记录 Gemini 生成的诊断报告原始 JSON。 |
+| `TUTORIALS_RECOMMENDED` | INFO | 关联教程。记录为命中动作 ID 推荐的教程视频列表。 |
+| `PAYLOAD_WRAPPED` | INFO | 报告打包。记录合并了 valid segments、reports 及视频外链的最终 Report Payload。 |
+| `JOB_SUCCESS` | INFO | 任务成功。任务最终状态写入 DB 完成。 |
+| `JOB_FAILED` | ERROR | 任务失败。记录管道中抛出的异常错误码及详细错误堆栈。 |
 
 ---
 ## 19. 推荐质量冷启动（Cold Start Quality Bootstrap）

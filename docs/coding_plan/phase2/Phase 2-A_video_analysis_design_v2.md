@@ -17,6 +17,8 @@
 | 2026-06-07 | 更新知识源文件引用 | 全文将 Excel 数据源引用从 `_v1.xlsx` 更新为 `_v2.xlsx`；同步标记需要新增 `fh_flick`、`serve_nospin` 到 `index.json` 和 `actions/*.md`。 |
 | 2026-06-07 | 更新 Markdown fallback 定位 | 由于 v2 Excel 已全面覆盖 13 个动作的识别/诊断规则，Markdown fallback 降级为“开发调试用途”，不再作为生产环境的必要保障路径。 |
 | 2026-06-08 | 修复 Pass 1 上游污染问题 | 约束 Pass 1 仅输出场景描述，并阻断其 description 传入 Pass 1.5/Pass 2 的 prompt，防止由于 Pass 1 自由发挥带来的锚定效应（例如将反手拉球误判为正手击球练习）。 |
+| 2026-06-11 | **新增视频帧率采样优化** | 利用 Gemini API 原生 `videoMetadata.fps` 参数，将默认 1fps 提升至 2-5fps，解决乒乓球毫秒级动作导致的丢帧误判问题。取代原 FFmpeg 时间拉伸方案。 |
+| 2026-06-11 | **新增本地结构化日志记录** | 引入 `VideoAnalysisLogger`，将分析任务各阶段（Pass 1, 1.5, 2）的输入、输出、决策、推荐教程和错误堆栈追加写入本地 `server/video_analysis.log` 文件，方便就地排查。 |
 
 ---
 
@@ -1105,3 +1107,68 @@ Pass 2：基于已识别 action_id 的诊断
 - 用户教学 Markdown 暂时继续人工维护。
 
 这样可以把系统从“模型自由猜动作”推进到“按教练规则识别动作”，显著降低错误技术识别对后续报告和教程推荐的连锁影响。
+
+---
+
+## 16. 视频帧率采样优化 (Frame Rate Optimization)
+
+### 16.1 优化背景
+
+即使我们在 Pass 1.5 中注入了完善的动作识别规则，模型仍可能出现严重误判（例如将“反手拉球”判为“正手攻球”）。其根本原因之一是：
+Gemini Files API 默认的视频抽样率为 **1 帧/秒**。
+乒乓球一个完整的挥拍动作仅需 0.2~0.3 秒，在 1fps 下，模型大概率完全漏掉关键的引拍、触球和随挥瞬间，导致缺乏视觉证据只能瞎猜。
+
+### 16.2 解决方案
+
+放弃早期的“通过服务端 FFmpeg 进行 4 倍慢放拉伸”方案（成本高、引入系统依赖、需重映射时间戳），改为使用 Gemini API 原生的 `videoMetadata.fps` 参数，在文件上传后针对不同 Pass 动态配置采样帧率。
+
+### 16.3 分 Pass 帧率策略
+
+| Pass | 环节 | 建议 FPS | 理由 | 环境变量 |
+|---|---|---|---|---|
+| **Pass 1** | 有效片段识别 | **2 fps** | 只需区分“打球 vs 休息”等宏观场景，不需要看清具体动作。 | `VIDEO_FPS_PASS1` |
+| **Pass 1.5** | 技术动作识别 | **5 fps** | 需要捕捉引拍方向、击球点位置等分类特征。5fps 足以在 0.2s 挥拍中捕捉到关键帧。 | `VIDEO_FPS_PASS15` |
+| **Pass 2** | 技术诊断 | **5 fps** | 需要看清手腕角度、重心转移等精细问题。 | `VIDEO_FPS_PASS2` |
+
+### 16.4 降级与兜底
+
+部分 `@google/genai` 版本在使用 `videoMetadata.fps` 时可能抛出 `extra_forbidden` 错误。在部署初期：
+- 建议优先升级 SDK 版本并测试兼容性。
+- 代码层面可加入 try-catch：如捕捉到相关错误，自动降级为不带 `videoMetadata` 参数的 1fps 模式，保证服务可用。
+
+---
+
+## 17. 视频分析 Pipeline 本地日志记录 (Structured Logging)
+
+### 17.1 设计背景
+
+在视频分析流水线异步执行过程中，所有的分析细节（Pass 1 识别出的片段、Pass 1.5 提取的置信度与混淆决策、Pass 2 生成的诊断报告、教程推荐以及错误码）如果仅通过 `console.log` 打印在标准输出中，极难在生产或开发调试中被开发者与 AI 助手直接抓取和结构化检索。
+
+为了向开发者和 AI 助手提供一种高可读、且无需接入复杂集中式日志系统的就地查询方案，我们引入了 `VideoAnalysisLogger` 模块。
+
+### 17.2 日志定位与文件格式
+
+- **文件路径**：`server/video_analysis.log`
+- **写入策略**：以被动、追加的方式，写入结构化的日志块，每个关键步骤用水平分割线隔离，并将大块的输入/输出（如 API 响应 Payload）以 JSON 格式打印。
+- **容错原则**：所有的文件写入全部被 `try-catch` 包裹，绝不阻塞或中断分析任务本身。
+
+### 17.3 记录的 Stage 与核心内容
+
+| Stage | 级别 | 触发时机 | 记录的 Payload 包含什么 |
+|---|---|---|---|
+| `JOB_START` | INFO | 任务 Worker 开始消费 Job | Job ID、视频路径、分析类型、视频时长 |
+| `GEMINI_UPLOAD_START` | INFO | 视频开始上传至 Gemini | 视频路径、MimeType 等参数 |
+| `GEMINI_UPLOAD_SUCCESS`| INFO | 文件上传成功 | 返回的 Gemini 文件名 |
+| `GEMINI_PROCESSING_POLL`| INFO| 轮询处理进度 | 当前文件状态 (PROCESSING / ACTIVE 等) |
+| `PASS1_START` | INFO | Pass 1 请求发起前 | 发送的 Sampler FPS、Prompt 文字 |
+| `PASS1_OUTPUT` | INFO | Pass 1 响应成功返回 | Gemini 响应的原始 JSON 结果 |
+| `PASS1_VALIDATED` | INFO | 有效片段校验通过后 | 校验后保留的 segments 数组 |
+| `PASS1.5_START` | INFO | Pass 1.5 技术动作识别发起前 | 传入的片段列表、分类候选库统计、FPS 等 |
+| `PASS1.5_OUTPUT` | INFO | Pass 1.5 响应成功返回 | Gemini 对各个片段和主导动作分类的 JSON 结果 |
+| `DECISION` | INFO | 置信度判定完成 | 计算出的决策状态 (status, validated_action_id, fallback 消息) |
+| `PASS2_START` | INFO | Pass 2 诊断发起前 | 拼接的诊断 Prompt、帧率配置、动作约束 |
+| `PASS2_OUTPUT` | INFO | Pass 2 诊断响应成功 | 返回的结构化诊断报告 JSON |
+| `TUTORIALS_RECOMMENDED`| INFO | 关联教程推荐 | 各 action_id 匹配到的视频教程 title 和 url |
+| `PAYLOAD_WRAPPED` | INFO | 报告封装完毕 | 最终合并的 AnalysisReportPayload 结构 |
+| `JOB_SUCCESS` | INFO | 任务成功写入数据库 | 任务结束标志 |
+| `JOB_FAILED` | ERROR | 管道中任意环节出错 | 具体的错误码与错误堆栈信息 |

@@ -1,5 +1,9 @@
 import { VideoSegment } from '../orchestrator/handleAnalysisJob';
 import { getRecognitionRules } from './analysisKnowledgeLoader';
+import { VideoAnalysisLogger } from './videoAnalysisLogger';
+
+/** Pass 1.5 技术分类帧率（需高精度捕捉动作特征） */
+const VIDEO_FPS_PASS15 = Number(process.env.VIDEO_FPS_PASS15) || 5;
 
 export interface TopCandidate {
   action_id: string;
@@ -19,7 +23,8 @@ export async function classifyTechnique(
   fileData: { fileUri: string; mimeType: string },
   segments: VideoSegment[],
   aiClient: any,
-  modelName: string
+  modelName: string,
+  jobId: string
 ): Promise<ClassificationResult> {
   const rules = getRecognitionRules();
   
@@ -74,35 +79,55 @@ export async function classifyTechnique(
   "analysis_notes": "简要分析过程，你为什么这样判断，特别是如果有易混淆动作，你是如何排除的"
 }`;
 
-  console.log(`[Pass 1.5] Sending classification request to ${modelName}...`);
-
-  // 2. Call Gemini
-  const response = await aiClient.models.generateContent({
+  VideoAnalysisLogger.info(jobId, 'PASS1.5_START', `Sending classification request to ${modelName}`, {
     model: modelName,
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          { fileData },
-          { text: knowledgePrompt }
-        ]
-      }
-    ],
-    config: {
-      temperature: 0.2, // Low temperature for classification consistency
-      responseMimeType: 'application/json'
-    }
+    fps: VIDEO_FPS_PASS15,
+    segmentsCount: segments.length,
+    rulesCount: rules.actions.length,
   });
 
-  const responseText = response.text || '';
+  // 2. Call Gemini
+  let responseText = '';
+  try {
+    const response = await aiClient.models.generateContent({
+      model: modelName,
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { fileData, videoMetadata: { fps: VIDEO_FPS_PASS15 } },
+            { text: knowledgePrompt }
+          ]
+        }
+      ],
+      config: {
+        temperature: 0.2, // Low temperature for classification consistency
+        responseMimeType: 'application/json'
+      }
+    });
+
+    responseText = response.text || '';
+  } catch (err: any) {
+    VideoAnalysisLogger.error(jobId, 'PASS1.5_FAILED', `Gemini classification request failed: ${err.message}`);
+    throw err;
+  }
+
   if (!responseText) {
-    throw new Error('Empty response from model during classification.');
+    const errorMsg = 'Empty response from model during classification.';
+    VideoAnalysisLogger.error(jobId, 'PASS1.5_FAILED', errorMsg);
+    throw new Error(errorMsg);
   }
 
   // 3. Parse JSON
   try {
-    const rawResult = JSON.parse(responseText);
-    console.log(`[Pass 1.5] Raw output:\n`, JSON.stringify(rawResult, null, 2));
+    let rawResult = JSON.parse(responseText);
+    VideoAnalysisLogger.info(jobId, 'PASS1.5_OUTPUT', 'Pass 1.5 raw output received', rawResult);
+    
+    // Handle case where Gemini returns an array of objects instead of a single object
+    if (Array.isArray(rawResult)) {
+      rawResult = rawResult.length > 0 ? rawResult[0] : {};
+    }
+
     const result: ClassificationResult = {
       primary_action_id: rawResult.primary_action_id || 'unknown',
       confidence: typeof rawResult.confidence === 'number' ? rawResult.confidence : 0,
@@ -112,10 +137,10 @@ export async function classifyTechnique(
       analysis_notes: rawResult.analysis_notes || ''
     };
     
-    console.log(`[Pass 1.5] Classification complete: ${result.primary_action_id} (conf: ${result.confidence})`);
+    VideoAnalysisLogger.info(jobId, 'PASS1.5_COMPLETE', `Classification complete: ${result.primary_action_id} (conf: ${result.confidence})`, result);
     return result;
   } catch (err: any) {
-    console.error(`[Pass 1.5] Failed to parse classification JSON:`, responseText);
+    VideoAnalysisLogger.error(jobId, 'PASS1.5_PARSE_FAILED', `Failed to parse classification JSON. Raw: ${responseText}`);
     throw new Error(`RECOGNITION_PARSE_FAILED: ${err.message}`);
   }
 }

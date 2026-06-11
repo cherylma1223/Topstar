@@ -10,6 +10,8 @@
 | 2026-06-07 | 对齐最新知识源边界 | 设计文档已明确 `actions/*.md` 是用户教学输出内容源，Excel/JSON 是视频识别规则源；implementation plan 中的 Markdown fallback 需要按此边界重新收敛。 |
 | 2026-06-07 | **同步 V2 Excel 审核结果** | 教练已提供包含 13 个动作的 v2 Excel。更新文件引用，并将 Markdown Fallback 从“防卡死机制”降级为“开发调试机制”。增加任务：同步 `fh_flick`、`serve_nospin` 到 index.json。 |
 | 2026-06-08 | 修复上游污染 (Upstream Contamination) | 修改 `handleAnalysisJob.ts` 和 `techniqueClassifier.ts`，彻底阻断 Pass 1 `description` 流入 Pass 1.5 和 Pass 2 的 Prompt，并约束 Pass 1 仅描述场景，防止技术锚定效应导致错判。 |
+| 2026-06-11 | **新增视频帧率采样优化实施步骤** | 在 `handleAnalysisJob.ts` 和 `techniqueClassifier.ts` 的 API 调用中增加对 `videoMetadata.fps` 的支持，以 2-5fps 替代默认 1fps，显著增强模型看清动作瞬间的能力。 |
+| 2026-06-11 | **新增本地结构化日志记录实施步骤** | 新增 `VideoAnalysisLogger` 组件，并在 `handleAnalysisJob.ts` 和 `techniqueClassifier.ts` 中注入详细日志记录，实现就地诊断。 |
 
 ---
 
@@ -91,6 +93,9 @@
   - 低置信度 (`overall_confidence < 0.55` 或 `primary_action_id === 'unknown'`)：进入降级流，不进行强诊断。
 
 #### [MODIFY] [handleAnalysisJob.ts](file:///Users/yingdongma/Documents/Dev/projects/Topstar/server/orchestrator/handleAnalysisJob.ts)
+- 增加分 Pass 帧率参数（使用 `videoMetadata: { fps: X }`）：
+  - `Pass 1` 使用 `process.env.VIDEO_FPS_PASS1 || 2` fps。
+  - `Pass 2` 使用 `process.env.VIDEO_FPS_PASS2 || 5` fps。
 - 重构 `uploadAndAnalyzeVideo` 执行流：
   1. Pass 1 找出 `validSegments`。
   2. 调用 `classifyTechnique` 执行 Pass 1.5 识别（注意切断 Pass 1 description 传入防锚定）。
@@ -101,6 +106,38 @@
   5. 教程推荐逻辑：只使用通过校验的 `primary_action_id`。如果为 `unknown` 则不推荐具体动作教程。
   6. 将 Pass 1.5 的识别置信度、核心证据等元数据写入最终的 Report Payload，以便前端开发扩展。
 
+#### [MODIFY] [techniqueClassifier.ts](file:///Users/yingdongma/Documents/Dev/projects/Topstar/server/videoAnalysis/techniqueClassifier.ts)
+- 同样在此阶段增加帧率采样配置：
+  - `Pass 1.5` 使用 `process.env.VIDEO_FPS_PASS15 || 5` fps。
+- 确保调用 `generateContent` 时，将 `videoMetadata.fps` 传入 `fileData` part 结构内。
+
+---
+
+### 组件 3：本地结构化日志记录层
+
+#### [NEW] [videoAnalysisLogger.ts](file:///Users/yingdongma/Documents/Dev/projects/Topstar/server/videoAnalysis/videoAnalysisLogger.ts)
+- 封装类 `VideoAnalysisLogger`，提供 `info`、`warn`、`error` 静态方法。
+- 采用 `fs.appendFileSync` 追加写入至本地 `server/video_analysis.log`。
+- 将每次写入包裹在 `try-catch` 中以确保绝对容错。
+- 记录结构：包括时间戳、Job ID、运行 Stage、日志等级及可选的详细 Payload (格式化 JSON)。
+
+#### [MODIFY] [techniqueClassifier.ts](file:///Users/yingdongma/Documents/Dev/projects/Topstar/server/videoAnalysis/techniqueClassifier.ts)
+- 增加 `jobId: string` 传参，用于追踪。
+- 在 `classifyTechnique` 中注入 `PASS1.5_START`（参数与规则数）、`PASS1.5_OUTPUT`（模型原始响应）、`PASS1.5_COMPLETE`（解析好的结果）以及 `PASS1.5_FAILED` / `PASS1.5_PARSE_FAILED` 的异常捕获。
+
+#### [MODIFY] [handleAnalysisJob.ts](file:///Users/yingdongma/Documents/Dev/projects/Topstar/server/orchestrator/handleAnalysisJob.ts)
+- 在 `uploadAndAnalyzeVideo` 与 `processAnalysisJob` 中引入 `VideoAnalysisLogger`。
+- 在以下生命周期锚点注入日志记录：
+  - `JOB_START`: 任务接收，记录视频元数据
+  - `GEMINI_UPLOAD_START`/`GEMINI_UPLOAD_SUCCESS`: 上传行为与生成文件名
+  - `GEMINI_PROCESSING_POLL`: 轮询状态
+  - `PASS1_START`/`PASS1_OUTPUT`/`PASS1_VALIDATED`: 片段分析请求、原始 JSON 响应、校验通过的片段
+  - `DECISION`: 分类置信度评估决策结论
+  - `PASS2_START`/`PASS2_OUTPUT`: 诊断 Prompt 与生成的诊断报告
+  - `TUTORIALS_RECOMMENDED`: 推荐教程的 action_id 到视频列表关联
+  - `PAYLOAD_WRAPPED`: 报告合并封装完毕的最终 payload
+  - `JOB_SUCCESS`/`JOB_FAILED`: 终态判定与异常错误堆栈
+
 ---
 
 ## Verification Plan
@@ -109,11 +146,10 @@
 - 编写测试脚本（在 `server/scripts/testExcelParser.ts` 中），测试 Excel 解析、校验合法性、生成 JSON 文件的能力。
 - 验证当 JSON 文件缺失时，Markdown Fallback 解析器是否能成功解析 `actions/*.md` 并生成结构相同的临时规则。
 
-### 2. E2E 视频分析质量测试
-- 提供以下典型视频进行回归测试，并与 v1 输出对比：
-  - **正手拉球标准视频**：验证识别结果为 `fh_loop`，置信度高，诊断内容指向蹬转/发力问题，且正确推荐“正手拉球”教程。
-  - **画质低劣/遮挡严重视频**：验证识别结果为 `unknown`，系统顺利降级，Pass 2 输出“视频不可见分析”，且没有生成虚假动作诊断，也不盲目推荐教程。
-  - **易混淆视频（如拨球与拉球界限模糊）**：验证置信度低于 0.75，系统决策判定为疑似（`tentative`），诊断语气为“疑似反手拨球”。
+### 2. E2E 视频分析质量与日志验证
+- 触发一次视频分析，并观测后台日志是否自动输出至 `console` 控制台。
+- 检查 `server/video_analysis.log` 是否被自动创建，且以完整的 `[timestamp] [Job] [Stage] [Level] Payload` 格式记录下每个 Pass 阶段的请求数据与模型输出。
+- 人为制造错误（如非法视频格式），验证 `JOB_FAILED` 是否成功记录具体错误堆栈，且 Worker 不崩溃。
 
 ### 3. 类型编译检查
 - 运行类型检查，确保改造后的模块能顺利通过 TypeScript 编译：

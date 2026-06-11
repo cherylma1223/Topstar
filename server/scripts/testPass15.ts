@@ -48,7 +48,7 @@ async function test() {
 
   try {
     console.log('Running Pass 1.5 (Classification)...');
-    const classResult = await classifyTechnique(fileData, dummySegments, ai, 'gemini-2.5-flash');
+    const classResult = await classifyTechnique(fileData, dummySegments, ai, 'gemini-2.5-flash', 'test-job-id');
     
     console.log('\n=== CLASSIFICATION RESULT ===');
     console.log(JSON.stringify(classResult, null, 2));
