@@ -63,24 +63,30 @@ const VIDEO_FPS_PASS2  = Number(process.env.VIDEO_FPS_PASS2)  || 5;
 
 // ─── Prompts ──────────────────────────────────────────────────────
 
-const SEGMENT_IDENTIFICATION_PROMPT = `你是一名专业乒乓球视频分析助手。请观看这段视频，识别出所有包含有效乒乓球动作的时间段。
+const SEGMENT_IDENTIFICATION_PROMPT = `你是一名乒乓球视频片段切割专家。你的唯一任务是：仔细观察视频，找出所有包含有效击球动作的时间段，过滤掉无效内容。
+你只负责"在哪些时间段有人在打球"，不需要分析技术动作、评价好坏。
 
-有效片段包括：正式回合、练习击球、发球练习、多球训练等包含实际击球动作的片段。
-需要过滤掉的无效片段：捡球、等待、休息、聊天、走动、调整器材、失误后的停顿等。
+【有效片段】
+正式比赛回合、单球/多球对练、发球练习、任何有实际挥拍击球动作的连续训练。
 
-【重要】description 只描述场景类型（如"多球训练"、"单球对练"、"发球练习"、"比赛回合"），
-不要描述具体技术动作名称（如正手、反手、攻球、拉球等），技术识别由后续环节负责。
+【无效内容】
+捡球、休息擦汗、纯讲解/示范（无实际击球）、调整器材、回合间的停顿。
 
-请严格按以下 JSON 格式输出（只输出 JSON，不要其他文字）：
+【description 填写规则】
+只描述场景，必须且只能从以下选取：多球训练、单球对练、发球练习、比赛回合、综合练习。
+禁止使用具体技术动作名词（如正手、反手、攻球、拉球等）。
+
+【时间格式】
+视频不足1小时用 mm:ss，超过1小时用 hh:mm:ss。
+
+请按 JSON 格式输出：
 {
-  "segments": [
-    { "start": "mm:ss", "end": "mm:ss", "description": "场景类型简述" }
-  ],
-  "total_valid_seconds": 数字
+  "segments": [{ "start": "...", "end": "...", "description": "..." }],
+  "total_valid_seconds": 所有片段时长之和
 }
 
-如果视频内容不是乒乓球相关，请输出：
-{ "segments": [], "total_valid_seconds": 0, "not_table_tennis": true }`;
+如果完全非乒乓球视频，输出：{ "not_table_tennis": true, "total_valid_seconds": 0, "segments": [] }
+如果视频质量极差（极度模糊/纯黑屏/纯音频）无法分析，输出：{ "unanalyzable": true, "reason": "具体原因", "total_valid_seconds": 0, "segments": [] }`;
 
 function buildPass2Prompt(analysisType: string, segments: VideoSegment[], decision?: DecisionAction): string {
   const segmentList = segments
@@ -165,6 +171,8 @@ const PASS1_SCHEMA = {
     },
     total_valid_seconds: { type: 'NUMBER' },
     not_table_tennis: { type: 'BOOLEAN' },
+    unanalyzable: { type: 'BOOLEAN' },
+    reason: { type: 'STRING' },
   },
   required: ['segments', 'total_valid_seconds'],
 };
@@ -275,7 +283,7 @@ function parseTimestamp(ts: string): number {
 function validateSegments(segments: any[], videoDurationSec?: number): VideoSegment[] {
   if (!Array.isArray(segments)) return [];
 
-  const valid: VideoSegment[] = [];
+  const valid: { startSec: number; endSec: number; description?: string }[] = [];
 
   for (const seg of segments) {
     if (!seg?.start || !seg?.end) continue;
@@ -287,30 +295,66 @@ function validateSegments(segments: any[], videoDurationSec?: number): VideoSegm
     if (endSec <= startSec) continue;                  // start >= end，跳过
     if ((endSec - startSec) < 1) continue;             // 不足 1 秒，跳过
 
+    // 引入首尾缓冲：向前扩充 1 秒，向后扩充 1 秒，避免 2fps 采样导致动作截断
+    let bufferedStart = Math.max(0, startSec - 1);
+    let bufferedEnd   = endSec + 1;
+
     // 截断到视频时长
-    const clampedEnd = videoDurationSec
-      ? Math.min(endSec, videoDurationSec)
-      : endSec;
-    if (clampedEnd <= startSec) continue;
+    if (videoDurationSec) {
+      bufferedEnd = Math.min(bufferedEnd, videoDurationSec);
+    }
+    
+    if (bufferedEnd <= bufferedStart) continue;
 
     valid.push({
-      start: seg.start,
-      end:   videoDurationSec ? formatSeconds(clampedEnd) : seg.end,
+      startSec: bufferedStart,
+      endSec: bufferedEnd,
       description: typeof seg.description === 'string' ? seg.description : undefined,
     });
   }
 
-  // 最多保留 20 段（按时长降序）
-  if (valid.length > 20) {
-    valid.sort((a, b) => {
+  // 按起始时间升序排列
+  valid.sort((a, b) => a.startSec - b.startSec);
+
+  // 智能合并：如果两个片段间隔 <= 5 秒，则合并为一个片段
+  const merged: { startSec: number; endSec: number; description?: string }[] = [];
+  for (const seg of valid) {
+    if (merged.length === 0) {
+      merged.push(seg);
+    } else {
+      const last = merged[merged.length - 1];
+      if (seg.startSec - last.endSec <= 5) {
+        // 合并
+        last.endSec = Math.max(last.endSec, seg.endSec);
+        // 如果 description 不同且都不为空，可以简单拼接
+        if (seg.description && last.description && !last.description.includes(seg.description)) {
+          last.description = last.description + ' / ' + seg.description;
+        } else if (!last.description && seg.description) {
+          last.description = seg.description;
+        }
+      } else {
+        merged.push(seg);
+      }
+    }
+  }
+
+  // 转换回 VideoSegment 格式，并最多保留 20 段（按时长降序）
+  const result: VideoSegment[] = merged.map(seg => ({
+    start: formatSeconds(seg.startSec),
+    end: formatSeconds(seg.endSec),
+    description: seg.description
+  }));
+
+  if (result.length > 20) {
+    result.sort((a, b) => {
       const durA = parseTimestamp(b.end) - parseTimestamp(b.start);
       const durB = parseTimestamp(a.end) - parseTimestamp(a.start);
       return durA - durB;
     });
-    return valid.slice(0, 20);
+    return result.slice(0, 20);
   }
 
-  return valid;
+  return result;
 }
 
 function formatSeconds(totalSec: number): string {
@@ -348,17 +392,62 @@ function wrapReportPayload(
   validSegments: VideoSegment[],
   tutorialsMap: Map<string, { title: string; url: string }[]>
 ): AnalysisReportPayload {
-  const injectTutorials = (report: TechniqueReport): TechniqueReport => {
+  const deduplicateProblems = (problems: any[]) => {
+    if (!problems || !Array.isArray(problems)) return problems;
+    
+    const merged = new Map<string, { text: string; timestamps: string[] }>();
+    for (const p of problems) {
+      if (!p.text) continue;
+      
+      // Normalize text for deduplication to ignore markdown and trailing punctuation
+      let key = p.text.trim();
+      key = key.replace(/^(#{1,6}|[*+\->]|\d+\.)\s+/, '');
+      key = key.replace(/(\*\*|__)(.*?)\1/g, '$2');
+      key = key.replace(/([*_])(.*?)\1/g, '$2');
+      key = key.replace(/`([^`]+)`/g, '$1');
+      key = key.replace(/[。，！？,!?.\s]+$/, '');
+      key = key.trim();
+      
+      if (!key) continue;
+
+      if (!merged.has(key)) {
+        // Keep the original text for the first occurrence
+        let display_text = p.text.replace(/^(#{1,6}|[*+\->]|\d+\.)\s+/, '').trim();
+        merged.set(key, { text: display_text, timestamps: [] });
+      }
+      if (p.timestamp && !merged.get(key)!.timestamps.includes(p.timestamp)) {
+        merged.get(key)!.timestamps.push(p.timestamp);
+      }
+    }
+    
+    const result = [];
+    for (const value of merged.values()) {
+      result.push({
+        text: value.text,
+        timestamp: value.timestamps.length > 0 ? value.timestamps.join(', ') : ''
+      });
+    }
+    return result;
+  };
+
+  const processReport = (report: TechniqueReport): TechniqueReport => {
     const ids: string[] = report.action_ids_detected || [];
     const links = ids.flatMap(id => tutorialsMap.get(id) || []);
-    return links.length > 0 ? { ...report, videoLinks: links } : report;
+    const processedReport = { ...report };
+    if (processedReport.problems) {
+      processedReport.problems = deduplicateProblems(processedReport.problems);
+    }
+    if (links.length > 0) {
+      processedReport.videoLinks = links;
+    }
+    return processedReport;
   };
 
   if (analysisType === 'match_strategy') {
     const arr: TechniqueReport[] = Array.isArray(reportData) ? reportData : [reportData];
     return {
       analysis_type: 'match_strategy',
-      reports: arr.map(r => ({ ...injectTutorials(r), variant: arr.indexOf(r) === 0 ? 'blue' : 'gradient' } as any)),
+      reports: arr.map(r => ({ ...processReport(r), variant: arr.indexOf(r) === 0 ? 'blue' : 'gradient' } as any)),
       valid_segments: validSegments,
       schema_version: 'v1',
     };
@@ -366,7 +455,7 @@ function wrapReportPayload(
     const report: TechniqueReport = Array.isArray(reportData) ? reportData[0] : reportData;
     return {
       analysis_type: 'technique',
-      reports: [{ ...injectTutorials(report), variant: 'gradient' } as any],
+      reports: [{ ...processReport(report), variant: 'gradient' } as any],
       valid_segments: validSegments,
       schema_version: 'v1',
     };
@@ -460,6 +549,12 @@ async function uploadAndAnalyzeVideo(
 
     if (rawPass1.not_table_tennis) {
       const errMsg = ERROR_CODES.NO_VALID_SEGMENTS + ':not_table_tennis';
+      VideoAnalysisLogger.warn(jobId, 'PASS1_FAILED', errMsg);
+      throw new Error(errMsg);
+    }
+
+    if (rawPass1.unanalyzable) {
+      const errMsg = ERROR_CODES.NO_VALID_SEGMENTS + ':unanalyzable (' + (rawPass1.reason || 'unknown reason') + ')';
       VideoAnalysisLogger.warn(jobId, 'PASS1_FAILED', errMsg);
       throw new Error(errMsg);
     }

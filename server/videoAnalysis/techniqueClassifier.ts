@@ -64,6 +64,46 @@ export async function classifyTechnique(
     knowledgePrompt += `- 如果 ${rule.condition}，影响 ${rule.affects}。系统操作: ${rule.system_action}\n`;
   });
 
+  knowledgePrompt += `\n【多模态与强制推理约束】
+你必须严格按照以下规则进行多模态分析与分层推理，禁止跳步：
+
+第1步：聆听语音指令，并评估语音置信度
+  仔细聆听视频中的语音/环境音，并按以下三级标准判断语音的可信程度：
+  - 【高置信度】：语音清晰，且口令明确指向单一技术动作（如"拉球"、"摩擦"、"下蹲迎前"）。
+    → 以语音意图为主，可覆盖视觉判断。
+  - 【中置信度】：语音存在，但含义模糊或非技术性词汇（如"好"、"再来"、"注意"）。
+    → 语音仅作参考，视觉判断为主。
+  - 【低置信度/无语音】：无可辨识语音，或背景噪声无法区分主体声音。
+    → 忽略语音，纯视觉判断。
+  在 analysis_notes 中记录：你听到了什么、判定的语音置信度等级及理由。
+
+第2步：判断击球方位，并评估方位置信度
+  判断球员击球时的身体方位（正手位/反手位），同步评估置信度（高/中/低）：
+  - 正手位：身体右侧（右手持拍者）
+  - 反手位：身体左侧或身前偏左
+  - 注意边界场景：侧身正手（球员在反手位用正手击球）应判定为"正手位，高置信度"，不可因位置在左侧而误判为反手位。
+  方位禁止规则（仅在高置信度时生效）：
+  - 高置信度反手位 → 禁止输出任何 fh_ 开头的 action_id
+  - 高置信度正手位 → 禁止输出任何 bh_ 开头的 action_id
+  - 中/低置信度方位 → 不强制限制，但须在 analysis_notes 中标注不确定性
+  在 analysis_notes 中记录：判定的方位、方位置信度及理由。
+
+第3步：综合研判技术类型
+  结合以下信号进行综合判断：
+  - 视觉信号：动作幅度（小撞击 vs 大幅度摩擦）、身体重心转移、随挥轨迹
+  - 语音信号（依据第1步的置信度等级决定权重）
+  重点注意：即使画面动作幅度较小（看起来像拨球），但如果第1步语音为【高置信度】且明确提示拉球技术要领，请以语音意图为准，将动作判定为拉球（如：bh_loop）。
+
+第4步：在 analysis_notes 中输出结构化推理结论
+  必须包含以下字段，便于系统自动校验：
+  - 语音内容：[听到的具体内容，或"无可辨识语音"]
+  - 语音置信度：[高/中/低]
+  - 判定方位：[正手位/反手位/不确定]
+  - 方位置信度：[高/中/低]
+  - 最终 action_id：[选择的动作ID]
+  - 选择理由：[综合视觉与语音的判断依据]
+\n`;
+
   const segmentList = segments
     .map(s => `- ${s.start}-${s.end}`)
     .join('\n');
@@ -71,12 +111,12 @@ export async function classifyTechnique(
   knowledgePrompt += `\n\n请分析以下视频片段：\n${segmentList}\n`;
   knowledgePrompt += `\n严格按照以下 JSON Schema 输出分类结果（仅返回 JSON）：
 {
-  "primary_action_id": "识别出的主要action_id（必须在候选库中，如果不确定填 unknown）",
+  "analysis_notes": "【必须第一步输出】详细输出你的分层推理过程。必须包含：1.语音内容及置信度 2.判定方位及置信度 3.视觉与语音的综合研判过程 4.最终决定的action_id",
+  "primary_action_id": "识别出的主要action_id（必须在候选库中，根据 analysis_notes 的结论填写，如果不确定填 unknown）",
   "confidence": 0.0到1.0的浮点数,
   "evidence": ["支持你判断的具体视觉证据..."],
   "top_candidates": [{"action_id": "xxx", "probability": 0.8}, {"action_id": "yyy", "probability": 0.2}],
-  "notable_missing_cues": ["预期该动作该有但视频中看不到或未做出的线索..."],
-  "analysis_notes": "简要分析过程，你为什么这样判断，特别是如果有易混淆动作，你是如何排除的"
+  "notable_missing_cues": ["预期该动作该有但视频中看不到或未做出的线索..."]
 }`;
 
   VideoAnalysisLogger.info(jobId, 'PASS1.5_START', `Sending classification request to ${modelName}`, {
@@ -101,7 +141,7 @@ export async function classifyTechnique(
         }
       ],
       config: {
-        temperature: 0.2, // Low temperature for classification consistency
+        temperature: 0.2, // Low temperature for strict classification consistency and layered reasoning
         responseMimeType: 'application/json'
       }
     });

@@ -279,6 +279,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
                       isTyping={part.isTyping === true} 
                       isFieldGuidance={aiIcon === 'person'}
                       onPlayVideo={onPlayVideo} 
+                      trainingVideoUrl={messages.find(m => m.parts.some(p => p.type === 'video'))?.parts.find(p => p.type === 'video')?.videoUrl}
                       onComplete={() => handleTypewriterComplete(msg.id, idx)}
                     />
                   )}

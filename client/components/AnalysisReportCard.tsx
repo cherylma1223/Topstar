@@ -19,7 +19,23 @@ interface AnalysisReportCardProps {
   isFieldGuidance?: boolean; 
   onComplete?: () => void;
   onPlayVideo?: (url: string) => void;
+  trainingVideoUrl?: string;
 }
+
+const getMediaFragment = (ts: string) => {
+  const parseTime = (timeStr: string) => {
+    const parts = timeStr.trim().split(':').map(Number);
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    return 0;
+  };
+  
+  if (ts.includes('-')) {
+    const [start, end] = ts.split('-');
+    return `#t=${parseTime(start)},${parseTime(end)}`;
+  }
+  return `#t=${parseTime(ts)}`;
+};
 
 const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({ 
   id,
@@ -30,7 +46,8 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
   isTyping = false,
   isFieldGuidance = false,
   onComplete,
-  onPlayVideo
+  onPlayVideo,
+  trainingVideoUrl
 }) => {
   const { techName, problems, improvements, videoLinks, summaryText: reportSummaryText } = report;
   const activeSummaryText = summaryText || reportSummaryText;
@@ -300,14 +317,22 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
                         <div className={textStyles}>
                           <TypewriterText content={prob.text} enabled={isTyping && step === 1 && idx === 0} onComplete={idx === problems.length - 1 ? handleStepComplete : undefined} noBullet={true} />
                         </div>
-                        {prob.timestamp && (
-                          <button 
-                            onClick={() => videoLinks && onPlayVideo?.(videoLinks[0].url)}
-                            className="w-fit flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-black border border-primary/10 hover:bg-primary hover:text-white transition-all active:scale-95"
-                          >
-                            <span className="material-symbols-outlined text-[12px]">videocam</span>
-                            {prob.timestamp}
-                          </button>
+                        {prob.timestamp && trainingVideoUrl && (
+                          <div className="flex flex-wrap gap-1.5 mt-0.5">
+                            {prob.timestamp.split(',').map((ts, tIdx) => {
+                              const cleanTs = ts.trim();
+                              return (
+                                <button 
+                                  key={tIdx}
+                                  onClick={() => onPlayVideo?.(`${trainingVideoUrl}${getMediaFragment(cleanTs)}`)}
+                                  className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-black border border-primary/10 hover:bg-primary hover:text-white transition-all active:scale-95"
+                                >
+                                  <span className="material-symbols-outlined text-[12px]">videocam</span>
+                                  {cleanTs}
+                                </button>
+                              );
+                            })}
+                          </div>
                         )}
                       </div>
                     </div>
