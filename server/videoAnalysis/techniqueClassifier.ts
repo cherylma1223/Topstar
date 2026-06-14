@@ -34,6 +34,7 @@ export async function classifyTechnique(
 
   // 1. Build the prompt with knowledge constraints
   let knowledgePrompt = `你是一个专业的乒乓球技术动作分类器。请观看这部分视频片段中的主体技术动作，并从以下候选库中选出最符合的技术（如果无法确定，请输出 "unknown"）。\n\n`;
+  knowledgePrompt += `【全局基础假设】\n如无特别说明，下文中所有的动作细节描述（如：手腕、前臂、大臂、手臂、掌心、手背等）均默认特指球员的【持拍手】及对应方位。请在观察视频、比对线索时，严格忽略非持拍手（空手）的干扰。\n\n`;
   
   knowledgePrompt += `【候选动作库】\n`;
   rules.actions.forEach(action => {
@@ -77,11 +78,19 @@ export async function classifyTechnique(
     → 忽略语音，纯视觉判断。
   在 analysis_notes 中记录：你听到了什么、判定的语音置信度等级及理由。
 
-第2步：判断击球方位，并评估方位置信度
-  判断球员击球时的身体方位（正手位/反手位），同步评估置信度（高/中/低）：
-  - 正手位：身体右侧（右手持拍者）
-  - 反手位：身体左侧或身前偏左
-  - 注意边界场景：侧身正手（球员在反手位用正手击球）应判定为"正手位，高置信度"，不可因位置在左侧而误判为反手位。
+第2步：识别持拍手与击球动作结构（判定正/反手），并评估置信度
+  首先观察并确认球员的【持拍手】（左手/右手），然后根据动作的解剖学结构判定是正手（Forehand）还是反手（Backhand）。不要受球员在球台上的站位影响。
+  - 【正手位（Forehand）】特征：
+    1. 引拍时，持拍手在躯干同侧（右手球员在右侧，左手球员在左侧）。
+    2. 击球时，【持拍手】的掌心及正手胶皮朝向出球方向（请务必忽略非持拍手的姿态）。
+    3. 挥拍轨迹通常由外向内（如右手由右向左前）。
+  - 【反手位（Backhand）】特征：
+    1. 引拍时，持拍手在躯干正前方或跨越中线至对侧（右手球员在腹前或左前方）。
+    2. 击球时，【持拍手】的手背及反手胶皮朝向出球方向（请务必忽略非持拍手的姿态）。
+    3. 挥拍轨迹通常由内向外（如右手由左腹前向右前弹击/拉伸）。
+  - 【易错边界场景】：
+    1. 左手球员：所有左右方向完全相反！务必先确认持拍手。
+    2. 侧身正手：无论球员跑到球台的哪个角落（即使在最左侧），只要是用躯干同侧、掌心向前的动作击球，必须判定为"正手位，高置信度"。
   方位禁止规则（仅在高置信度时生效）：
   - 高置信度反手位 → 禁止输出任何 fh_ 开头的 action_id
   - 高置信度正手位 → 禁止输出任何 bh_ 开头的 action_id
@@ -126,6 +135,29 @@ export async function classifyTechnique(
     rulesCount: rules.actions.length,
   });
 
+  const PASS15_SCHEMA = {
+    type: 'OBJECT',
+    properties: {
+      analysis_notes: { type: 'STRING' },
+      primary_action_id: { type: 'STRING' },
+      confidence: { type: 'NUMBER' },
+      evidence: { type: 'ARRAY', items: { type: 'STRING' } },
+      top_candidates: {
+        type: 'ARRAY',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            action_id: { type: 'STRING' },
+            probability: { type: 'NUMBER' }
+          },
+          required: ['action_id', 'probability']
+        }
+      },
+      notable_missing_cues: { type: 'ARRAY', items: { type: 'STRING' } }
+    },
+    required: ['analysis_notes', 'primary_action_id', 'confidence', 'evidence', 'top_candidates', 'notable_missing_cues']
+  };
+
   // 2. Call Gemini
   let responseText = '';
   try {
@@ -142,7 +174,8 @@ export async function classifyTechnique(
       ],
       config: {
         temperature: 0.2, // Low temperature for strict classification consistency and layered reasoning
-        responseMimeType: 'application/json'
+        responseMimeType: 'application/json',
+        responseSchema: PASS15_SCHEMA
       }
     });
 
