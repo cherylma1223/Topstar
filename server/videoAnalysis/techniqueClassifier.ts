@@ -16,6 +16,7 @@ export interface ClassificationResult {
   evidence: string[];
   top_candidates: TopCandidate[];
   notable_missing_cues: string[];
+  audio_transcript: string;
   analysis_notes: string;
 }
 
@@ -76,7 +77,8 @@ export async function classifyTechnique(
     → 语音仅作参考，视觉判断为主。
   - 【低置信度/无语音】：无可辨识语音，或背景噪声无法区分主体声音。
     → 忽略语音，纯视觉判断。
-  在 analysis_notes 中记录：你听到了什么、判定的语音置信度等级及理由。
+  【特别注意】：乒乓球馆环境嘈杂，教练发出的"蹲"、"起"、"拉"、"收"、"摩擦"等短促单音节指令极易被击球声掩盖。请务必竖起耳朵仔细辨别！只要听到这类短促的技术发力指令，必须记录在 audio_transcript 中并在 analysis_notes 中重点评估。
+  在 analysis_notes 中记录：判定的语音置信度等级及理由。
 
 第2步：识别持拍手与击球动作结构（判定正/反手），并评估置信度
   首先观察并确认球员的【持拍手】（左手/右手），然后根据动作的解剖学结构判定是正手（Forehand）还是反手（Backhand）。不要受球员在球台上的站位影响。
@@ -105,7 +107,7 @@ export async function classifyTechnique(
 
 第4步：在 analysis_notes 中输出结构化推理结论
   必须包含以下字段，便于系统自动校验：
-  - 语音内容：[听到的具体内容，或"无可辨识语音"]
+  - 语音内容概要：[对 audio_transcript 的简要总结]
   - 语音置信度：[高/中/低]
   - 判定方位：[正手位/反手位/不确定]
   - 方位置信度：[高/中/低]
@@ -120,7 +122,8 @@ export async function classifyTechnique(
   knowledgePrompt += `\n\n请分析以下视频片段：\n${segmentList}\n`;
   knowledgePrompt += `\n严格按照以下 JSON Schema 输出分类结果（仅返回 JSON）：
 {
-  "analysis_notes": "【必须第一步输出】详细输出你的分层推理过程。必须包含：1.语音内容及置信度 2.判定方位及置信度 3.视觉与语音的综合研判过程 4.最终决定的action_id",
+  "audio_transcript": "【第一步输出】将你听到的所有人的对话、口令一字不落地写在这里，并标出大致的时间点或动作对应阶段。如果没有听到任何有意义的语音，请填写'无可辨识语音'。",
+  "analysis_notes": "【第二步输出】详细输出你的分层推理过程。必须包含：1.对语音内容的评估及置信度 2.判定方位及置信度 3.视觉与语音的综合研判过程 4.最终决定的action_id",
   "primary_action_id": "识别出的主要action_id（必须在候选库中，根据 analysis_notes 的结论填写，如果不确定填 unknown）",
   "confidence": 0.0到1.0的浮点数,
   "evidence": ["支持你判断的具体视觉证据..."],
@@ -138,6 +141,7 @@ export async function classifyTechnique(
   const PASS15_SCHEMA = {
     type: 'OBJECT',
     properties: {
+      audio_transcript: { type: 'STRING' },
       analysis_notes: { type: 'STRING' },
       primary_action_id: { type: 'STRING' },
       confidence: { type: 'NUMBER' },
@@ -155,7 +159,7 @@ export async function classifyTechnique(
       },
       notable_missing_cues: { type: 'ARRAY', items: { type: 'STRING' } }
     },
-    required: ['analysis_notes', 'primary_action_id', 'confidence', 'evidence', 'top_candidates', 'notable_missing_cues']
+    required: ['audio_transcript', 'analysis_notes', 'primary_action_id', 'confidence', 'evidence', 'top_candidates', 'notable_missing_cues']
   };
 
   // 2. Call Gemini
@@ -207,6 +211,7 @@ export async function classifyTechnique(
       evidence: Array.isArray(rawResult.evidence) ? rawResult.evidence : [],
       top_candidates: Array.isArray(rawResult.top_candidates) ? rawResult.top_candidates : [],
       notable_missing_cues: Array.isArray(rawResult.notable_missing_cues) ? rawResult.notable_missing_cues : [],
+      audio_transcript: rawResult.audio_transcript || '',
       analysis_notes: rawResult.analysis_notes || ''
     };
     
