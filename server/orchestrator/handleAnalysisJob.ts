@@ -67,7 +67,7 @@ const SEGMENT_IDENTIFICATION_PROMPT = `你是一名乒乓球视频片段切割�
 你只负责"在哪些时间段有人在打球"，不需要分析技术动作、评价好坏。
 
 【有效片段】
-正式比赛回合、单球/多球对练、发球练习、任何有实际挥拍击球动作的连续训练。
+正式比赛回合、单球/多球对练、发球练习、任何有实际挥拍击球动作的连续训练。（重要：如果击球前有教练的口令、提示或准备动作，请务必将其包含在有效片段内，切勿过早截断！）
 
 【无效内容】
 捡球、休息擦汗、纯讲解/示范（无实际击球）、调整器材、回合间的停顿。
@@ -295,8 +295,8 @@ function validateSegments(segments: any[], videoDurationSec?: number): VideoSegm
     if (endSec <= startSec) continue;                  // start >= end，跳过
     if ((endSec - startSec) < 1) continue;             // 不足 1 秒，跳过
 
-    // 引入首尾缓冲：向前扩充 1 秒，向后扩充 1 秒，避免 2fps 采样导致动作截断
-    let bufferedStart = Math.max(0, startSec - 1);
+    // 引入首尾缓冲：向前扩充 3 秒（以确保捕捉到击球前教练的“蹲/起”等口令），向后扩充 1 秒，避免截断
+    let bufferedStart = Math.max(0, startSec - 3);
     let bufferedEnd   = endSec + 1;
 
     // 截断到视频时长
@@ -678,10 +678,15 @@ async function uploadAndAnalyzeVideo(
 // ─── Job 处理入口（Worker 调用）───────────────────────────────────
 
 export async function processAnalysisJob(jobId: string): Promise<void> {
-  // 标记为 running
-  db.prepare(
-    `UPDATE analysis_jobs SET status = 'running', started_at = ?, attempt_count = attempt_count + 1 WHERE id = ?`
+  // 原子地标记为 running，防止多个进程/线程并发抢占同一个 Job
+  const updateResult = db.prepare(
+    `UPDATE analysis_jobs SET status = 'running', started_at = ?, attempt_count = attempt_count + 1 WHERE id = ? AND status = 'queued'`
   ).run(new Date().toISOString(), jobId);
+
+  if (updateResult.changes === 0) {
+    VideoAnalysisLogger.warn(jobId, 'JOB_SKIP', `Job is not in queued state (already running by another worker), skipping.`);
+    return;
+  }
 
   // 读取 job 信息
   const job = db.prepare(
