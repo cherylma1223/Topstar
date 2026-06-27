@@ -2,6 +2,15 @@
 <html lang="zh-CN" class="dark">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      (function() {
+        try {
+          if (localStorage.getItem('topstar-appearance-mode') === 'light') {
+            document.documentElement.classList.remove('dark');
+          }
+        } catch(e) {}
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>当家球星</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />

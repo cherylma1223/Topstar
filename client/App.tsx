@@ -26,7 +26,13 @@ const App: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [hasEngaged, setHasEngaged] = useState(false);
-  const [appearanceMode, setAppearanceMode] = useState<'dark' | 'light'>('dark');
+  const [appearanceMode, setAppearanceMode] = useState<'dark' | 'light'>(() => {
+    try {
+      const stored = localStorage.getItem('topstar-appearance-mode');
+      if (stored === 'dark' || stored === 'light') return stored;
+    } catch {}
+    return 'dark';
+  });
   const [isAutoReadEnabled, setIsAutoReadEnabled] = useState(false);
   const [isAutoAnalyzeEnabled, setIsAutoAnalyzeEnabled] = useState(true);
 
@@ -58,6 +64,9 @@ const App: React.FC = () => {
       document.documentElement.classList.remove('dark');
       document.body.classList.remove('dark');
     }
+    try {
+      localStorage.setItem('topstar-appearance-mode', appearanceMode);
+    } catch {}
   }, [appearanceMode]);
 
   const getInitialMessages = useCallback((serviceTitle?: string): Message[] => {

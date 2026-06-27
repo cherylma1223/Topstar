@@ -124,7 +124,11 @@ export async function classifyTechnique(
   knowledgePrompt += `\n\n请分析以下视频片段：\n${segmentList}\n`;
   knowledgePrompt += `\n严格按照以下 JSON Schema 输出分类结果（仅返回 JSON）：
 {
-  "audio_transcript": "【第一步输出】将你听到的所有人的对话、口令一字不落地写在这里，并标出大致的时间点或动作对应阶段（特别注意结合视频画面中是否有下蹲动作，来综合分辨 '蹲' 和 '对' 的发音区别，消除同音歧义）。如果没有听到任何有意义的语音，请填写'无可辨识语音'。",
+  "audio_transcript": "【严格规则】仅输出视频中真实存在的人类语音的一字不落转录。
+  - 如果视频中有人的说话声，逐字记录（如教练说"拉"、"蹲"、"摩擦"），并标注到秒的时间点。
+  - 如果只有球馆环境音（击球声、脚步声、球拍击球声、球落地声、球馆背景嗡鸣），没有任何可辨识的人类语言，则必须填写 "无可辨识语音"。
+  - 禁止将环境音（击球声、脚步声）脑补为人类语言指令。
+  - 禁止添加任何分析性描述——这里只做转写，不做解释。",
   "analysis_notes": "【第二步输出】详细输出你的分层推理过程。必须包含：1.对语音内容的评估及置信度 2.判定方位及置信度 3.视觉与语音的综合研判过程 4.最终决定的action_id",
   "primary_action_id": "识别出的主要action_id（必须在候选库中，根据 analysis_notes 的结论填写，如果不确定填 unknown）",
   "confidence": 0.0到1.0的浮点数,
@@ -164,31 +168,52 @@ export async function classifyTechnique(
     required: ['audio_transcript', 'analysis_notes', 'primary_action_id', 'confidence', 'evidence', 'top_candidates', 'notable_missing_cues']
   };
 
-  // 2. Call Gemini
+  // 2. Call Gemini (with retry for transient failures)
   let responseText = '';
-  try {
-    const response = await aiClient.models.generateContent({
-      model: modelName,
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { fileData, videoMetadata: { fps: VIDEO_FPS_PASS15 } },
-            { text: knowledgePrompt }
-          ]
-        }
-      ],
-      config: {
-        temperature: 0.2, // Low temperature for strict classification consistency and layered reasoning
-        responseMimeType: 'application/json',
-        responseSchema: PASS15_SCHEMA
-      }
-    });
+  const MAX_RETRIES = 2;
+  const RETRY_DELAY_MS = 3000;
 
-    responseText = response.text || '';
-  } catch (err: any) {
-    VideoAnalysisLogger.error(jobId, 'PASS1.5_FAILED', `Gemini classification request failed: ${err.message}`);
-    throw err;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await aiClient.models.generateContent({
+        model: modelName,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { fileData, videoMetadata: { fps: VIDEO_FPS_PASS15 } },
+              { text: knowledgePrompt }
+            ]
+          }
+        ],
+        config: {
+          temperature: 0.2, // Low temperature for strict classification consistency and layered reasoning
+          responseMimeType: 'application/json',
+          responseSchema: PASS15_SCHEMA,
+        }
+      });
+
+      responseText = response.text || '';
+      break; // success, exit retry loop
+    } catch (err: any) {
+      const isRetryable = err.message?.includes('fetch failed')
+        || err.message?.includes('503')
+        || err.message?.includes('429')
+        || err.message?.includes('UNAVAILABLE')
+        || err.message?.includes('overloaded');
+
+      if (attempt < MAX_RETRIES && isRetryable) {
+        const delay = RETRY_DELAY_MS * Math.pow(2, attempt);
+        VideoAnalysisLogger.warn(jobId, 'PASS1.5_RETRY',
+          `Attempt ${attempt + 1} failed: ${err.message}. Retrying in ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+
+      VideoAnalysisLogger.error(jobId, 'PASS1.5_FAILED',
+        `Gemini classification request failed after ${attempt + 1} attempt(s): ${err.message}`);
+      throw err;
+    }
   }
 
   if (!responseText) {
