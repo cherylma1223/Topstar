@@ -6,6 +6,7 @@
 import { v4 as uuid } from 'uuid';
 import { classifyIntent, type IntentResult, type IntentType } from '../intent/intentRouter';
 import { matchKnowledge, getKnowledgeSummary } from '../knowledge/matcher';
+import { getActionAliasMap } from '../knowledge/loader';
 import { recommendTutorials, type RecommendedTutorial } from '../tutorials/recommendTutorials';
 import { validateTemplate } from './templateValidator';
 import { getAI, withRetry } from '../routes/v1';
@@ -222,9 +223,13 @@ export async function handleChatEvent(req: ChatRequest): Promise<ChatResponse | 
       }
 
       // 从用户消息中提取常见乒乓球术语作为标签
-      const commonTerms = ['拧拉', '弧圈', '发球', '接发球', '推挡', '搓球', '削球', '正手', '反手', '拉球', '挑打', '摆短', '劈长', '台内', '步法', '发力'];
-      for (const term of commonTerms) {
-        if (req.message.includes(term)) searchTags.push(term);
+      const aliasMap = getActionAliasMap();
+      for (const [actionId, aliases] of aliasMap) {
+        for (const alias of aliases) {
+          if (req.message.includes(alias)) {
+            searchTags.push(alias);
+          }
+        }
       }
 
       tutorialVideos = recommendTutorials(

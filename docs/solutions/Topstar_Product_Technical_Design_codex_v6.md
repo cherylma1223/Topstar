@@ -24,6 +24,7 @@
 | 2026-06-13 | v1.13 | 升级第 18.8 节 Pass 1 分段切割算法，基于“精简Prompt指令约束+后端数学兜底”设计，在 `validateSegments` 阶段执行首尾各扩充 1 秒缓冲防截断，并自动合并间隔 ≤ 5 秒的碎片化片段。 |
 | 2026-06-16 | v1.14 | 升级第 18.x 节（隐式），在 Pass 1.5 中引入音频转写 CoT（Chain of Thought）机制，强制模型先行转写短促动作口令，有效解决嘈杂环境下的“听觉失忆”导致的分类误判。 |
 | 2026-06-20 | v1.15 | 强化视频分析并发控制与多模态识别边界：1. 在 `processAnalysisJob` 引入基于 SQLite 状态断言的原子级排他锁，根治多进程导致的并发双重处理问题。2. 增加 Pass 1 前置缓冲至 3 秒，避免教练提前喊出的核心指令被截断。3. 优化 Pass 1.5 提示词，引入“视听交叉验证”消解短促口令（如“对/蹲”）的同音歧义，修复单凭听觉强行匹配导致的识别过度拟合。 |
+| 2026-06-27 | v1.16 | 新增 Phase 3 知识库编译器架构重构：确立教练 Excel 为全系统唯一真相源 (SSOT)，重构 `actions` 类知识，由知识编译器统一下发生成 `chat_knowledge_index.json`、`action_aliases.json` 及全自动化 `actions/*.md` 构建产物。彻底消除硬编码与文档双写。 |
 
 ---
 
@@ -109,8 +110,9 @@ flowchart LR
 
 ### 4.1 技术动作知识库（Actions）
 
-**载体**：Markdown（保留现状，便于迭代）。  
-**索引**：`index.json` + metadata（title/category/keywords）。  
+**唯一真相源 (SSOT)**：教练维护的 `table_tennis_action_knowledge_v2.xlsx`。
+**载体**：Markdown（由知识编译器从 Excel 全量自动生成，降级为只读构建产物，不可手动修改）。  
+**索引**：`chat_knowledge_index.json` + metadata（title/category/keywords，其中 actions 类别由编译器自动同步）。  
 **主键**：`action_id`（例如 `bh_flick`, `fh_loop`）。  
 **用途**：
 
@@ -120,7 +122,7 @@ flowchart LR
 
 **范例（MVP 建议保持与现状兼容）**：
 
-动作索引条目（示例，来源于 `client/src/assets/knowledge/index.json` 的结构）：
+动作索引条目（示例，来源于 `client/src/assets/knowledge/chat_knowledge_index.json` 的自动化结构）：
 
 ```json
 {
@@ -128,22 +130,27 @@ flowchart LR
   "title": "反手拧拉",
   "category": "actions",
   "file": "actions/bh_flick.md",
-  "keywords": ["拧拉", "反手拧", "台内拧", "张继科拧拉", "架肘"]
+  "keywords": ["拧拉", "反手拧", "霸王拧", "台内拧", "拧拉技术", "张继科招牌技术", "反手台内", "内扣", "架肘", "顶肘"]
 }
 ```
 
-动作知识文件片段（示例，`actions/bh_flick.md` 风格）：
+动作知识文件片段（示例，`actions/bh_flick.md` 自动化生成模板风格）：
 
 ```md
+<!-- ⚠️ 本文件由知识编译器自动生成，请勿手动修改。 -->
+<!-- 源文件: table_tennis_action_knowledge_v2.xlsx -->
+# 反手拧拉
+
 ### 【动作要领】
 引拍时前臂外旋，拍头略高于手腕；击球点在身体前侧，向前上摩擦为主。
 
-### 【常见问题】
-1) 只“甩手腕”不蹬转，球缺底劲
-2) 拍型过亮，容易出界
+### 【常见问题与纠错建议库】
+- **技术问题：引拍位置错误**
+  - **视觉证据**：拍形低于台面
+  - **训练建议**：请注意在台面以上引拍...
 
-### 【训练建议】
-多球：短下旋到反手位，先做薄摩擦，再逐步提速；要求每板击球点一致。
+### 【核心秘诀】
+（VIP核心秘诀内容...）
 ```
 
 ### 4.2 战术策略知识库（Tactics）
@@ -721,7 +728,14 @@ export function scoreCandidate(tutorial: Tutorial, tags: string[]): number {
 - [ ] **P2-I4** 构建 50+ 样本的回归测试集进行校准。
 - [ ] **P2-F4** 前端适配 `response_mode` 渲染逻辑。
 
-### Phase 3（持续）：视频真实理解 + 语义检索 + Mini Program 适配
+### Phase 3-A：知识库编译器与 SSOT 架构重构 (当前阶段)
+
+- [ ] 升级导出脚本为全局知识编译器，统一生成视频分析 JSON、别名映射 JSON、对话知识索引、Markdown 文档四大产物。
+- [ ] 彻底消灭硬编码：重写 `normalize` 脚本和 `handleChatEvent.ts` 标签提取逻辑，从 `action_aliases.json` 动态加载。
+- [ ] 索引文件正名：重命名为 `chat_knowledge_index.json` 并由编译器全自动管理 `actions` 类别的生成与同步。
+- [ ] 消灭教练双写：升级 Excel 模板新增“动作要领详细说明”和“VIP核心秘诀”列，实现 `actions/*.md` 100% 全自动生成。
+
+### Phase 3-B（规划中）：视频真实理解 + 语义检索 + Mini Program 适配
 
 - 视频分析切换至**阶段 B 实现**（第 18.2 节）：接入 Gemini Files API 真正看视频
 - embedding/语义检索统一化（可选）

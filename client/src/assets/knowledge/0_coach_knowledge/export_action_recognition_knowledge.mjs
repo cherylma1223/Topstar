@@ -52,6 +52,8 @@ function main() {
         scenario: row['适用来球/场景'],
         exclusions: exclusions
       },
+      desc: row['动作要领详细说明'] || '',
+      vip: row['VIP核心秘诀'] || '',
       positive_cues: [],
       negative_cues: []
     });
@@ -151,6 +153,79 @@ function main() {
   fs.writeFileSync(DIAGNOSIS_JSON_PATH, JSON.stringify(diagnosisJson, null, 2), 'utf-8');
   console.log(`[export] Wrote diagnosis rules to ${DIAGNOSIS_JSON_PATH}`);
   
+  // Step 3: Export Action Aliases
+  const ACTION_ALIASES_PATH = path.join(SERVER_DATA_DIR, 'action_aliases.json');
+  const actionAliasesJson = {
+    schema_version: "v1",
+    generated_from: "table_tennis_action_knowledge_v2.xlsx",
+    generated_at: new Date().toISOString(),
+    actions: Array.from(actionsMap.values()).map(a => ({
+      id: a.id,
+      title: a.title,
+      aliases: a.aliases
+    }))
+  };
+  fs.writeFileSync(ACTION_ALIASES_PATH, JSON.stringify(actionAliasesJson, null, 2), 'utf-8');
+  console.log(`[export] Wrote action aliases to ${ACTION_ALIASES_PATH}`);
+
+  // Step 4: Sync chat_knowledge_index.json (actions only)
+  const CHAT_INDEX_PATH = path.join(__dirname, '..', 'chat_knowledge_index.json');
+  if (fs.existsSync(CHAT_INDEX_PATH)) {
+    const existingIndex = JSON.parse(fs.readFileSync(CHAT_INDEX_PATH, 'utf-8'));
+    const nonActionEntries = existingIndex.entries.filter(e => e.category !== 'actions');
+    const actionEntries = Array.from(actionsMap.values()).map(a => ({
+      id: a.id,
+      title: a.title,
+      category: 'actions',
+      file: `actions/${a.id}.md`,
+      keywords: [a.title, ...a.aliases]
+    }));
+    existingIndex.entries = [...actionEntries, ...nonActionEntries];
+    fs.writeFileSync(CHAT_INDEX_PATH, JSON.stringify(existingIndex, null, 2), 'utf-8');
+    console.log(`[export] Wrote synced index to ${CHAT_INDEX_PATH}`);
+  }
+
+  // Step 5: Generate actions/*.md
+  const ACTIONS_MD_DIR = path.join(__dirname, '..', 'actions');
+  if (fs.existsSync(ACTIONS_MD_DIR)) {
+    const files = fs.readdirSync(ACTIONS_MD_DIR);
+    for (const file of files) {
+      if (file.endsWith('.md')) {
+        fs.unlinkSync(path.join(ACTIONS_MD_DIR, file));
+      }
+    }
+  } else {
+    fs.mkdirSync(ACTIONS_MD_DIR, { recursive: true });
+  }
+
+  for (const [actionId, action] of actionsMap.entries()) {
+    const rules = diagnosisRules
+      .filter(r => r.action_id === actionId)
+      .sort((a, b) => b.priority - a.priority);
+
+    let md = `<!-- ⚠️ 本文件由知识编译器自动生成，请勿手动修改。 -->\n\n`;
+    md += `## 【动作要领】\n${action.desc || ''}\n\n`;
+    
+    if (rules.length > 0) {
+      md += `## 【常见问题与纠错建议库】\n\n`;
+      for (const r of rules) {
+        md += `### ${r.problem}\n`;
+        md += `- **视觉证据**：${r.evidence}\n`;
+        if (r.related_cues.length > 0) {
+          md += `- **相关线索**：${r.related_cues.join(', ')}\n`;
+        }
+        md += `- **纠错建议**：${r.advice}\n\n`;
+      }
+    }
+    
+    if (action.vip) {
+      md += `## 【核心秘诀】\n${action.vip}\n\n`;
+    }
+
+    fs.writeFileSync(path.join(ACTIONS_MD_DIR, `${actionId}.md`), md.trim() + '\n', 'utf-8');
+  }
+  console.log(`[export] Wrote ${actionsMap.size} action markdown files to ${ACTIONS_MD_DIR}`);
+
   console.log('[export] Done.');
 }
 

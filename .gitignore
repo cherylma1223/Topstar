@@ -15,3 +15,4 @@ server/uploads/*
 *.db
 *.db-shm
 *.db-wal
+.agents/

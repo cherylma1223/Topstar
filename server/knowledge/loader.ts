@@ -24,9 +24,9 @@ let knowledgeIndex: Array<{
  */
 export function loadKnowledgeBase(): void {
   try {
-    const indexPath = path.join(KNOWLEDGE_DIR, 'index.json');
+    const indexPath = path.join(KNOWLEDGE_DIR, 'chat_knowledge_index.json');
     if (!fs.existsSync(indexPath)) {
-      console.warn('[Knowledge] index.json not found at:', indexPath);
+      console.warn('[Knowledge] chat_knowledge_index.json not found at:', indexPath);
       return;
     }
 
@@ -79,4 +79,24 @@ export function getActionIds(): string[] {
  */
 export function getKnowledgeIndex() {
   return knowledgeIndex;
+}
+
+const ACTION_ALIASES_PATH = path.join(__dirname, '..', 'data', 'action_aliases.json');
+
+let actionAliasMap: Map<string, string[]> | null = null;
+
+export function getActionAliasMap(): Map<string, string[]> {
+  if (actionAliasMap) return actionAliasMap;
+  actionAliasMap = new Map();
+  try {
+    if (fs.existsSync(ACTION_ALIASES_PATH)) {
+      const data = JSON.parse(fs.readFileSync(ACTION_ALIASES_PATH, 'utf-8'));
+      for (const action of data.actions || []) {
+        actionAliasMap.set(action.id, [action.title, ...action.aliases]);
+      }
+    }
+  } catch (err: any) {
+    console.warn('[Knowledge] Failed to load action aliases:', err.message);
+  }
+  return actionAliasMap;
 }

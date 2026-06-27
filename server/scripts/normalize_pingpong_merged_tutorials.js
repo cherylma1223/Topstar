@@ -74,28 +74,28 @@ function deriveFallbackTitle(item) {
   return `${item.platform || 'unknown'}_video_${item.item_id || 'unknown'}`;
 }
 
-function buildActionMatcher() {
-  // High-confidence only. Keep conservative to avoid wrong binding.
-  return [
-    { action_id: 'bh_flick', patterns: ['反手拧拉', '霸王拧', '反手拧', '台内拧'] },
-    { action_id: 'fh_loop', patterns: ['正手拉球', '正手弧圈', '正手冲拉', '正手拉下旋', '正手拉上旋', '正手暴冲'] },
-    { action_id: 'fh_drive', patterns: ['正手攻球', '正手攻'] },
-    { action_id: 'bh_loop', patterns: ['反手拉球', '反手弧圈', '反手起下旋'] },
-    { action_id: 'bh_drive', patterns: ['反手拨球', '反手快拨', '反手拨'] },
-    { action_id: 'bh_block', patterns: ['反手防弧圈', '反手挡', '反手封堵'] },
-    { action_id: 'fh_block', patterns: ['正手防弧圈', '正手挡', '减力挡'] },
-    { action_id: 'serve_spin', patterns: ['下旋发球', '发下旋'] },
-    { action_id: 'hook_serve', patterns: ['勾手发球'] },
-    { action_id: 'reverse_pendulum_serve', patterns: ['逆旋转发球', '逆旋转'] },
-    { action_id: 'receive', patterns: ['接发球', '接发', '摆短', '劈长'] },
-  ];
+let actionMatchersCache = null;
+
+function loadActionMatcher() {
+  if (actionMatchersCache) return actionMatchersCache;
+  const aliasPath = path.join(__dirname, '..', 'data', 'action_aliases.json');
+  if (!fs.existsSync(aliasPath)) {
+    console.error('[FATAL] action_aliases.json not found. Run the knowledge compiler first.');
+    process.exit(1);
+  }
+  const data = JSON.parse(fs.readFileSync(aliasPath, 'utf-8'));
+  actionMatchersCache = data.actions.map(a => ({
+    action_id: a.id,
+    patterns: [a.title, ...a.aliases]
+  }));
+  return actionMatchersCache;
 }
 
 function matchActionIds(text) {
   if (!text) return [];
   const s = String(text);
   const hits = [];
-  for (const rule of buildActionMatcher()) {
+  for (const rule of loadActionMatcher()) {
     for (const p of rule.patterns) {
       if (s.includes(p)) {
         hits.push(rule.action_id);
