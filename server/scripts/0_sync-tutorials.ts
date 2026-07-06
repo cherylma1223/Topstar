@@ -15,7 +15,7 @@ import { execSync } from 'child_process';
 const PROJECT_ROOT = path.join(__dirname, '../..');
 const EXTERNAL_SOURCE = '/Users/yingdongma/Documents/Dev/codex/output/pingpong-merged/favorites.json';
 const LOCAL_RAW = path.join(PROJECT_ROOT, 'resources/tutorials/raw/favorites.json');
-const LOCAL_DB = path.join(__dirname, '../topstar.db');
+const LOCAL_DB = path.join(__dirname, '../data/topstar.db');
 const NORMALIZED_DATA = path.join(__dirname, '../data/tutorials.pingpong-merged.normalized.json');
 const BACKUP_DIR = path.join(PROJECT_ROOT, 'backups/tutorials');
 

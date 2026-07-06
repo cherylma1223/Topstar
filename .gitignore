@@ -1,5 +1,10 @@
 node_modules/
 .DS_Store
+
+# 本地配置文件，不提交
+.env.example
+CLAUDE.md.local
+server/.gitignore
 .env
 dist/
 .trash/

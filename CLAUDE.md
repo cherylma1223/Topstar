@@ -40,7 +40,7 @@ cd server && npm run bootstrap-scores   # 初始化质量评分
 `server/orchestrator/handleChatEvent.ts` 是对话的核心 pipeline：
 
 1. **意图识别** → `intent/intentRouter.ts`：两层分类（规则优先，LLM 兜底），6 种意图：ACTION_COACHING / TACTIC_ADVICE / EQUIPMENT_QA / TUTORIAL_REQUEST / VIDEO_ANALYSIS / OFF_TOPIC
-2. **知识检索** → `knowledge/loader.ts` + `knowledge/matcher.ts`：从 `client/src/assets/knowledge/` 加载 Markdown 知识库，关键词匹配
+2. **知识检索** → `knowledge/loader.ts` + `knowledge/matcher.ts`：从 `client/knowledge/` 加载 Markdown 知识库，关键词匹配
 3. **教程推荐** → `tutorials/recommendTutorials.ts`：召回→打分→重排，分值权重：action_id 匹配 +5，tag 命中 +2（上限），标题 +0.5
 4. **上下文组装** + **LLM 调用**（`gemini-3-flash-preview`）→ 将知识库内容、教程推荐、模板约束注入 system instruction
 5. **模板校验** → `orchestrator/templateValidator.ts`：确保 LLM 输出包含模板要求的必要段落
@@ -89,4 +89,4 @@ Worker (`server/jobs/analysisWorker.ts`) 每 10 秒轮询 `analysis_jobs` 表中
 
 ### 知识库
 
-`client/src/assets/knowledge/` 存放知识库 Markdown 文件 + `index.json`，服务端启动时加载到内存 Map。`knowledge_git_repo/` 是知识库的独立 git 仓库。
+`client/knowledge/` 存放知识库 Markdown 文件 + `chat_knowledge_index.json`，服务端启动时加载到内存 Map。`knowledge_git_repo/` 是知识库的独立 git 仓库。

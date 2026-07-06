@@ -9,7 +9,7 @@ export interface KnowledgeEntry {
   content: string;
 }
 
-const KNOWLEDGE_DIR = path.join(__dirname, '..', '..', 'client', 'src', 'assets', 'knowledge');
+const KNOWLEDGE_DIR = path.join(__dirname, '..', '..', 'client', 'knowledge');
 const knowledgeStore = new Map<string, KnowledgeEntry>();
 let knowledgeIndex: Array<{
   id: string;
