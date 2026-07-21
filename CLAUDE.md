@@ -90,3 +90,13 @@ Worker (`server/jobs/analysisWorker.ts`) 每 10 秒轮询 `analysis_jobs` 表中
 ### 知识库
 
 `client/knowledge/` 存放知识库 Markdown 文件 + `chat_knowledge_index.json`，服务端启动时加载到内存 Map。`knowledge_git_repo/` 是知识库的独立 git 仓库。
+
+## 视频分析全链路追踪报告
+
+当用户上传视频后要求「查看系统处理关键环节」时，请使用 `docs/video-analysis-report-template.md` 作为报告模板输出。该文件包含：
+- 完整报告结构（总览 → 上传 → Pass 1切割 → Pass 1.5分类 → Pass 2诊断 → 教程推荐 → 清理）
+- 耗时计算公式
+- 完整示例（基于最近一次成功分析）
+- 故障排查备忘
+
+> ⏰ **必须注意**：`server/video_analysis.log` 中时间戳是 **UTC**（末尾带 `Z`），用户位于 UTC+8 时区，展示前必须 +8 小时转为北京时间。

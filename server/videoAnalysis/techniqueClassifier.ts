@@ -28,7 +28,7 @@ export async function classifyTechnique(
   jobId: string
 ): Promise<ClassificationResult> {
   const rules = getRecognitionRules();
-  
+
   if (!rules) {
     throw new Error('Recognition rules could not be loaded.');
   }
@@ -36,7 +36,7 @@ export async function classifyTechnique(
   // 1. Build the prompt with knowledge constraints
   let knowledgePrompt = `你是一个专业的乒乓球技术动作分类器。请观看这部分视频片段中的主体技术动作，并从以下候选库中选出最符合的技术（如果无法确定，请输出 "unknown"）。\n\n`;
   knowledgePrompt += `【全局基础假设】\n如无特别说明，下文中所有的动作细节描述（如：手腕、前臂、大臂、手臂、掌心、手背等）均默认特指球员的【持拍手】及对应方位。请在观察视频、比对线索时，严格忽略非持拍手（空手）的干扰。\n\n`;
-  
+
   knowledgePrompt += `【候选动作库】\n`;
   rules.actions.forEach(action => {
     knowledgePrompt += `- ${action.id} (${action.title}): ${action.definition}\n`;
@@ -78,7 +78,7 @@ export async function classifyTechnique(
   - 【低置信度/无语音】：无可辨识语音，或背景噪声无法区分主体声音。
     → 忽略语音，纯视觉判断。
   【特别注意】：乒乓球馆环境嘈杂，教练发出的"蹲"、"起"、"拉"、"收"、"摩擦"等短促单音节指令极易被击球声掩盖。
-  由于发音相近，教练表示鼓励的“对(dui)”与发力指令“蹲(dun)”极易混淆。**请引入【视听交叉验证】：当你听到类似短促发音时，必须结合画面中球员是否有明显的下蹲、屈膝蓄力动作来综合判断！如果画面中球员动作很小（如简单的拨球），绝不可将“对”强行识别为“蹲”；如果画面中有明显深蹲蓄力，则很有可能是“蹲”。**
+  由于发音相近，教练表示鼓励的“对(dui)”与发力指令“蹲(dun)”极易混淆。**请引入【视听交叉验证】：当你听到类似短促发音时，必须结合画面中球员是否有明显的下蹲、屈膝蓄力动作来综合判断！如果画面中球员动作很小（如简单的拨球），绝不可将“对”强行识别为“蹲”；如果画面中有腿部弯曲、收腹蓄力，则很有可能是“蹲”。**
   请务必竖起耳朵并结合画面仔细辨别！特别留意视频最开头的几秒钟。只要听到技术发力指令，必须记录在 audio_transcript 中并在 analysis_notes 中重点评估。
   在 analysis_notes 中记录：判定的语音置信度等级及理由。
 
@@ -226,7 +226,7 @@ export async function classifyTechnique(
   try {
     let rawResult = JSON.parse(responseText);
     VideoAnalysisLogger.info(jobId, 'PASS1.5_OUTPUT', 'Pass 1.5 raw output received', rawResult);
-    
+
     // Handle case where Gemini returns an array of objects instead of a single object
     if (Array.isArray(rawResult)) {
       rawResult = rawResult.length > 0 ? rawResult[0] : {};
@@ -241,7 +241,7 @@ export async function classifyTechnique(
       audio_transcript: rawResult.audio_transcript || '',
       analysis_notes: rawResult.analysis_notes || ''
     };
-    
+
     VideoAnalysisLogger.info(jobId, 'PASS1.5_COMPLETE', `Classification complete: ${result.primary_action_id} (conf: ${result.confidence})`, result);
     return result;
   } catch (err: any) {

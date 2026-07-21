@@ -1,7 +1,7 @@
 {
   "schema_version": "v1",
   "generated_from": "table_tennis_action_knowledge_v2.xlsx",
-  "generated_at": "2026-06-27T10:48:16.744Z",
+  "generated_at": "2026-07-20T13:11:07.336Z",
   "actions": [
     {
       "id": "bh_flick",
