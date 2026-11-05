@@ -6,7 +6,7 @@
  * 第一层：规则强命中（高置信度，无需 LLM）
  * 第二层：LLM 结构化分类（处理规则未命中的情况）
  */
-import { getAI } from '../routes/v1';
+import { generate } from '../llm';
 import { getActionIds } from '../knowledge/loader';
 
 export type IntentType =
@@ -139,16 +139,12 @@ ${JSON.stringify(actionIds)}
 用户输入：${message}`;
 
   try {
-    const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      config: {
-        temperature: 0.1,  // 低温度，减少漂移
-      },
+    const { text } = await generate({
+      capability: 'intent',
+      messages: [{ role: 'user', parts: [{ type: 'text', text: prompt }] }],
+      temperature: 0.1,  // 低温度，减少漂移
     });
 
-    const text = response.text || '';
     // 提取 JSON（可能被包裹在 ```json ... ``` 中）
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {

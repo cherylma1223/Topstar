@@ -10,6 +10,7 @@ import v2Router from './routes/v2';
 import { startLinkHealthCheck } from './jobs/linkHealthCheck';
 import { startTutorialSyncJob } from './jobs/tutorialSyncJob';
 import { recoverStaleJobs, startAnalysisWorker } from './jobs/analysisWorker';
+import { isCapabilityAvailable, getDeployRegion } from './llm';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -33,7 +34,7 @@ app.use('/api/v2', v2Router);
 
 // 兼容旧的健康检查路径
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', hasKey: !!process.env.GEMINI_API_KEY });
+  res.json({ status: 'ok', hasKey: isCapabilityAvailable('chat'), region: getDeployRegion() });
 });
 
 // 启动

@@ -8,22 +8,17 @@ import { randomUUID } from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
-import { Modality } from '@google/genai';
 import { handleChatEvent, type ChatRequest } from '../orchestrator/handleChatEvent';
 import { recommendTutorials } from '../tutorials/recommendTutorials';
 import { updateTutorialStatus, getTutorial } from '../tutorials/loader';
-import { getAI, withRetry } from './v1';
+import { tts, isCapabilityAvailable, getPrimaryModel } from '../llm';
 import db from '../db';
 import { enqueueAnalysisJob } from '../jobs/queue';
 
 
 const router = express.Router();
-const ttsCache = new Map<string, { expiresAt: number; audio: { mime_type: string; sample_rate: number; data: string } }>();
+const ttsCache = new Map<string, { expiresAt: number; audio: { mime_type: string; sample_rate: number; data: string }; model: string }>();
 const TTS_CACHE_TTL_MS = 10 * 60 * 1000;
-
-function buildTTSPrompt(text: string): string {
-  return `Please read the following text aloud in a professional and encouraging tone: ${text.trim()}`;
-}
 
 function cleanupExpiredTTSCache() {
   const now = Date.now();
@@ -171,39 +166,25 @@ async function synthesizeSegment(text: string, voice: string) {
   const cacheKey = `${voice}::${text}`;
   const cached = ttsCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
-    return { audio: cached.audio, cacheHit: true };
+    return { audio: cached.audio, model: cached.model, cacheHit: true };
   }
 
-  const response = await withRetry(() => getAI().models.generateContent({
-    model: 'gemini-2.5-flash-preview-tts',
-    contents: buildTTSPrompt(text),
-    config: {
-      responseModalities: [Modality.AUDIO],
-      speechConfig: {
-        voiceConfig: {
-          prebuiltVoiceConfig: { voiceName: voice },
-        },
-      },
-    },
-  }), 1, 300);
-
-  const part = (response as any).candidates?.[0]?.content?.parts?.[0];
-  if (!part?.inlineData?.data) {
-    throw new Error('No audio data in response');
-  }
+  // 重试 / 降级策略见 server/llm/config.ts 的 tts 能力配置
+  const result = await tts({ text, voice });
 
   const audio = {
-    mime_type: part.inlineData.mimeType || 'audio/pcm',
-    sample_rate: 24000,
-    data: part.inlineData.data,
+    mime_type: result.mimeType,
+    sample_rate: result.sampleRate ?? 24000,
+    data: result.data,
   };
 
   ttsCache.set(cacheKey, {
     expiresAt: Date.now() + TTS_CACHE_TTL_MS,
     audio,
+    model: result.model,
   });
 
-  return { audio, cacheHit: false };
+  return { audio, model: result.model, cacheHit: false };
 }
 
 /**
@@ -225,7 +206,7 @@ router.post('/chat', async (req, res) => {
     });
   }
 
-  if (!process.env.GEMINI_API_KEY) {
+  if (!isCapabilityAvailable('chat')) {
     return res.status(500).json({
       success: false,
       error: {
@@ -263,7 +244,7 @@ router.post('/tts', async (req, res) => {
     voice = 'Kore',
   } = req.body || {};
 
-  if (!process.env.GEMINI_API_KEY) {
+  if (!isCapabilityAvailable('tts')) {
     return res.status(500).json({
       success: false,
       error: {
@@ -297,10 +278,11 @@ router.post('/tts', async (req, res) => {
 
     const synthesized = await Promise.all(
       segments.map(async (segment) => {
-        const { audio, cacheHit } = await synthesizeSegment(segment.text, voice);
+        const { audio, model, cacheHit } = await synthesizeSegment(segment.text, voice);
         return {
           ...segment,
           audio,
+          model,
           cacheHit,
         };
       })
@@ -311,9 +293,9 @@ router.post('/tts', async (req, res) => {
       request_id: requestId,
       cache_hit: synthesized.every(item => item.cacheHit),
       voice,
-      segments: synthesized.map(({ cacheHit, ...segment }) => segment),
+      segments: synthesized.map(({ cacheHit, model, ...segment }) => segment),
       metrics: {
-        provider_model: 'gemini-2.5-flash-preview-tts',
+        provider_model: synthesized[0]?.model || getPrimaryModel('tts') || 'unknown',
         generation_ms: Date.now() - startedAt,
       },
     });

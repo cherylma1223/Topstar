@@ -1,7 +1,8 @@
 # Topstar 国产化模型迁移计划 v2（H5 优先 · 3 个月上线版）
 
-> **状态**：已确认路线，待启动
+> **状态**：已确认路线，**Phase 0.1 已于 2026-11-05 启动**（v2.1 修订，见第 10 节变更记录）
 > **创建日期**：2026-10-15
+> **最近修订**：2026-11-05
 > **上一版**：[Topstar_国产化模型迁移计划_v1.md](./Topstar_国产化模型迁移计划_v1.md)（长期规划版。v1 中背景分析、依赖盘点、Phase 3 的内容仍然有效）
 > **上线目标**：**12 月下旬灰度上线，2027-01-15 前正式上线**（2027 年春节是 2 月 6 日，节前留出缓冲）
 
@@ -20,6 +21,9 @@
 | D4 | 模型 | **上线前完成国产化**（v1 的 Phase 0–2） | 境内服务器访问不了 Gemini。监管看的是是否面向大陆公众提供服务，和渠道无关 |
 | D5 | 部署 | **服务器、数据库、对象存储全部在境内** | ICP 备案的要求；保证访问体验；避免数据出境 |
 | D6 | 首发范围 | **砍掉图片生成和 `/api/v1` 旧接口** | 少迁一项是一项，集中精力做核心体验 |
+| D7 | 云厂商（2026-11-05 定） | **阿里云为主**：服务器、数据库、OSS、ICP 备案、百炼模型（Qwen-VL / Qwen-Omni、ASR、CosyVoice、内容安全）。**火山方舟**只作为视频模型评测的第二候选，通过 API 调用，不买服务器 | 视频理解是唯一的难点，Omni 类模型最贴近现有的视听交叉验证；一家就能配齐全套能力，签约和登记材料都简单；模型走 API，后续可以跨厂商混用，不影响备案 |
+| D8 | 海外版（2026-11-05 定） | **一定会做，但不是当前的高优先级**。`GeminiProvider` 和 Gemini 文件托管作为正式实现**长期维护**，不只是对比基线 | 用部署区域配置（`DEPLOY_REGION=cn\|global`）切换整套 provider、存储和合规开关，两个版本共用业务代码 |
+| D9 | 评测集标注（2026-11-05 定） | **由项目负责人亲自标注**。目标是 11/15 前完成约 30 条，标注模板随评测脚本一起提供 | 标注不阻塞 Phase 0.1 开工，只阻塞 W5 的视频 Go/No-Go |
 
 ---
 
@@ -108,11 +112,16 @@ gantt
 | **M5 灰度上线** | 12/28 左右 | ICP 备案已通过；内容安全和 AI 标识已上线 | 只做邀请制内测 |
 | **M6 正式上线** | 1/15 前 | 灰度期间没有 P0 问题 | 春节后再上线 |
 
+> [!WARNING]
+> **进度检查（2026-11-05）**：M1 和 M2 原定 10/31 完成，实际都没有达成。云厂商在 11/05 定为阿里云（D7），ICP 备案还没提交；Phase 0.1 在 11/05 才开始。按 M1 的规则，上线日期面临顺延约 1 周的风险。补救办法：**本周内购买服务器并提交 ICP 备案**；Phase 0.1 按第 4.2 节的 PR 拆分快速推进，目标 11/14 前完成 M2。
+
 ---
 
 ## 4. 各条线任务明细
 
 ### 4.1 云厂商选型（W1 必须定）
+
+> **结论（2026-11-05）**：选阿里云，见决策 D7。ICP 备案通过服务器所在的云厂商（接入商）提交，以后换云需要办理「变更接入」，所以首次选定后尽量不要更换。
 
 | 维度 | 阿里云 | 腾讯云 | 火山引擎 |
 |---|---|---|---|
@@ -127,22 +136,55 @@ gantt
 
 ### 4.2 后端 / 模型线
 
-#### Phase 0.1 抽象层（W1–2）
+#### Phase 0.1 抽象层（W1–2，实际 11/05 启动）
 
-接口设计见 [v1 0.1 节](./Topstar_国产化模型迁移计划_v1.md#01-模型抽象层-llmprovider)。按 3 个月上线的要求做了精简：
+接口设计以本节为准（v2.1 修订）。[v1 0.1 节](./Topstar_国产化模型迁移计划_v1.md#01-模型抽象层-llmprovider)的接口过粗，已废弃：
 
-- [ ] 新建 `server/llm/`：定义 `LLMProvider`（`chat` / `analyzeVideo` / `tts`）和 `VideoStorage` 接口。首发去掉 `generateImage`
-- [ ] 实现 `GeminiProvider`，行为和现在完全一致，作为对比基线
-- [ ] 模型名、降级链、provider 选择全部改成环境变量，每项能力单独配置
-- [ ] adapter 层统一做 JSON Schema 校验、修复和重试
-- [ ] `analysis_jobs` 中 Gemini 文件引用字段泛化为 `provider` + `file_ref`
-- [ ] 下线 `/api/v1` 路由
+- **不再设 `analyzeVideo()`**。Pass 1 / 1.5 / 2 是 3 次不同的调用，各自有 prompt、Schema、fps 和 temperature。prompt 是领域资产，留在业务层。抽象层只提供通用的多模态 `generate()`，按能力（`capability`）路由到对应的 provider 和模型。
+- **Schema 用标准 JSON Schema**（小写 `type`），由各 adapter 转换成自家的格式（Gemini 用 `OBJECT` 方言，OpenAI 兼容接口用 `json_schema` / `json_object`）。返回结果在抽象层统一做校验、修复和重试。
+- **错误归一**：adapter 把各家的错误转成中立的错误码（`MODEL_UNAVAILABLE` / `RATE_LIMITED` / `INVALID_REQUEST` / `UPSTREAM_ERROR` 等），业务层不再匹配 Gemini 的错误字符串。
+- **消息角色中立化**：统一用 `user` / `assistant`，不再用 Gemini 的 `model`。
+
+```ts
+// server/llm/types.ts（摘要）
+type Part =
+  | { type: 'text'; text: string }
+  | { type: 'video'; ref: VideoRef; fps?: number };
+
+interface GenerateRequest {
+  capability: 'chat' | 'intent' | 'video_pass1' | 'video_pass15' | 'video_pass2';
+  system?: string;
+  messages: { role: 'user' | 'assistant'; parts: Part[] }[];
+  responseSchema?: JSONSchema;
+  temperature?: number;
+}
+
+interface LLMProvider {
+  generate(req: GenerateRequest): Promise<GenerateResult>;
+  tts(req: TTSRequest): Promise<AudioResult>;
+}
+
+interface VideoStorage {
+  upload(localPath: string, mimeType: string): Promise<VideoRef>;
+  waitReady(ref: VideoRef): Promise<VideoRef>;
+  cleanup(ref: VideoRef): Promise<void>;
+}
+```
+
+按以下顺序拆成可以独立提交、独立回滚的 PR：
+
+- [x] **PR 1 搬家**：把 `getAI` / `withRetry` 从 `routes/v1.ts` 移到 `server/llm/`，业务代码改引用，行为零变化（2026-11-05 完成）
+- [x] **PR 2 接口 + GeminiProvider**：`types.ts`、能力路由配置（环境变量，每项能力单独配置模型和降级链）、`GeminiProvider`、`GeminiFilesStorage`、JSON Schema 转换与校验、错误归一。首发去掉 `generateImage`（2026-11-05 完成，22 个单元测试，`npm test`）
+- [x] **PR 3 业务切换**：chat / intent / Pass 1 / 1.5 / 2 / TTS 全部改走 `LLMProvider`；顺带修复 Pass 1.5 写死模型、不走降级链的问题（2026-11-05 代码完成，已通过类型检查和假 provider 冒烟测试；**还需用真实 Gemini Key 手动回归 2–3 个视频和几轮对话**）
+- [ ] **PR 4 VideoStorage + DB**：`analysis_jobs` 新增 `provider` + `file_ref` 字段（补一个轻量的迁移，保留旧的 `gemini_file_name` 列兼容历史数据）；用 ffprobe 补写 `video_duration`（目前从来没有写入，导致片段截断不生效）
+- [ ] **PR 5 下线 v1 + 图片生成**：**前后端在同一个 PR 里一起下线**（前端目前仍在调用 v1 的 chat 降级、TTS 降级和图片接口）；前端错误码改成中立码，同时兼容旧的 `GEMINI_*` 码
+- [ ] **PR 6 评测基线**：见下方「精简评测集」
 
 #### 精简评测集（W1–2）
 
-- [ ] 30–50 条视频，覆盖主要技术动作和常见的拍摄条件
-- [ ] 教练标注：片段时间范围、动作类别、主要问题点
-- [ ] 保存当前 Gemini 的输出作为基线
+- [ ] 30–50 条视频，覆盖主要技术动作和常见的拍摄条件（可以从 `server/uploads/` 已有的视频中挑选，需先确认来源和授权）
+- [ ] 教练标注：片段时间范围、动作类别、主要问题点（由项目负责人标注，见 D9；标注模板随评测脚本提供）
+- [ ] 保存当前 Gemini 的输出作为基线。**必须在服务器迁到境内之前跑完**，迁移后就访问不了 Gemini 了。另外 Pass 1.5 的分类结果目前只写日志、不写数据库，要先加上分 Pass 的结构化输出落盘
 - [ ] 评测脚本 `server/scripts/evalVideo.ts`，指标见 [v1 0.2 节](./Topstar_国产化模型迁移计划_v1.md#02-评测集最重要的资产)
 - [ ] 顺带完成 [Phase1_Leftovers_TODO](../coding_plan/phase1/Topstar_Phase1_Leftovers_TODO.md) 里的 **P1-S5 意图评测集**（30–50 条）
 
@@ -150,15 +192,17 @@ gantt
 
 #### 国内模型接入（W3–5）
 
-- [ ] 为 1–2 家候选实现 Provider adapter（优先选定云厂商的模型）
-- [ ] 对话、意图识别、TTS 切换到国内模型，并调整 prompt。[UNIFIED_COACH_INSTRUCTION](../../client/geminiService.ts) 和模板校验器要做回归
+- [ ] 为 1–2 家候选实现 Provider adapter（优先选定云厂商的模型）。文本能力先写一个通用的 `OpenAICompatibleProvider`（参数是 baseURL + model + key），百炼、方舟、DeepSeek 都提供 OpenAI 兼容接口，一个 adapter 就能做多家影子对比（兼容程度以各家文档为准）
+- [ ] 对话、意图识别、TTS 切换到国内模型，并调整 prompt。回归对象是服务端的模板 prompt（[handleChatEvent.ts](../../server/orchestrator/handleChatEvent.ts)）和 [templateValidator.ts](../../server/orchestrator/templateValidator.ts)。前端的 `UNIFIED_COACH_INSTRUCTION` 只被 v1 遗留接口使用，随 v1 一起下线
+- [ ] TTS 输出格式中立化：前端目前写死按 PCM 16-bit / 24kHz 解码，改成按 `mime_type` 解码；国内 TTS 优先输出 wav/mp3（带容器，才能写入隐式标识）；`voice` 参数做音色映射（`Kore` 是 Gemini 的音色名）
 - [ ] 视频模型在评测集上和 Gemini 基线对比
 
 #### 视频链路迁移 + 境内部署（W6–9）
 
 - [ ] 用对象存储 + 签名 URL + 生命周期自动删除，替代 Gemini Files API 的上传、轮询、清理流程
 - [ ] Pass 1 / 1.5 / 2 接入国内模型。如果模型不支持长视频直接输入，就先抽帧或按片段切分
-- [ ] 视听交叉验证：优先用 Omni 类模型；效果不够就降级（见 5.1）
+- [ ] **服务端 ffmpeg 预处理**：Pass 1.5 / 2 按 Pass 1 的片段用 ffmpeg 真正裁剪后再送入（现在是传整段视频，再靠 prompt 说明只看哪些时间段），可以节省 token 并绕开时长限制；如果走抽帧路线，每帧要带上绝对时间，否则 Pass 1 的时间戳就没有意义了。部署环境要装 ffmpeg / ffprobe
+- [ ] 视听交叉验证：优先用 Omni 类模型；效果不够就按 5.1 降级（先试 B1.5 独立 ASR，再考虑 B2）
 - [ ] 境内部署：后端、数据库、对象存储；[linkHealthCheck](../../server/jobs/linkHealthCheck.ts) 等定时任务一并迁移
 - [ ] 用户视频设置保留期限（例如分析完成后 N 天自动删除）
 
@@ -171,7 +215,7 @@ gantt
 | 生成式 AI 应用登记 | W3 准备，W6–9 提交 | 调用已备案的模型，应用侧流程相对简单。**具体材料和时限向属地网信部门确认** |
 | 隐私政策 / 用户协议 | W3–5 | 写明视频收集目的、保留期限、第三方模型服务商；涉及人脸时评估是否属于敏感个人信息，需要单独取得同意 |
 | 内容安全审核 | W6–9 | 用户输入（文本、视频）和模型输出都要接入云厂商的内容审核服务 |
-| AI 生成内容标识 | W6–9 | 对话回复、TTS 音频加显式标识（界面文字或提示音），文件元数据中加隐式标识 |
+| AI 生成内容标识 | W6–9 | 对话回复、TTS 音频加显式标识（界面文字或提示音），文件元数据中加隐式标识。注意：目前 TTS 是裸 PCM 放在 JSON 里传，没有元数据可写，需要改成 wav/mp3 容器格式 |
 | 公安联网备案 | 上线后 30 日内 | |
 | 未成年人保护 | W6–9 | 乒乓球用户中可能有青少年，评估是否需要年龄提示或监护人同意 |
 
@@ -179,10 +223,10 @@ gantt
 
 现有的 React + Vite 前端**不需要重写**，只做以下适配：
 
-- [ ] 删除图片生成和 v1 接口的调用；清理 [Leftovers](../coding_plan/phase1/Topstar_Phase1_Leftovers_TODO.md) 里的 mock 报告和硬编码的假链接
-- [ ] **视频上传**：在微信内置浏览器里测试 `<input type="file" accept="video/*">`；大文件改为分片上传或直传对象存储（签名 URL），并显示上传进度
-- [ ] **TTS 播放**：移动端浏览器（尤其 iOS 微信）禁止自动播放音频，需要用户点击后才能播放
-- [ ] **流式回复**：确认在微信浏览器里能正常工作，必要时提供非流式降级方案
+- [ ] 删除图片生成和 v1 接口的调用（和后端下线 v1 放在同一个 PR，见 4.2 的 PR 5）；清理 [Leftovers](../coding_plan/phase1/Topstar_Phase1_Leftovers_TODO.md) 里的 mock 报告和硬编码的假链接
+- [ ] **视频上传**：在微信内置浏览器里测试 `<input type="file" accept="video/*">`；大文件改为分片上传或直传对象存储（签名 URL），并显示上传进度；统一前端提示和后端的文件大小上限（目前前端提示 100MB，后端限制是 500MB）
+- [ ] **TTS 播放**：移动端浏览器（尤其 iOS 微信）禁止自动播放音频，需要用户点击后才能播放；解码改为按 `mime_type` 处理（见 4.2）
+- [x] ~~**流式回复**：确认在微信浏览器里能正常工作~~（v2.1：当前 chat 是非流式接口，这一项不需要做）
 - [ ] 移动端布局、安全区域适配、横竖屏
 - [ ] 首次进入时弹出隐私政策同意；AI 回复带标识
 - [ ] （可选）微信分享卡片：需要公众号 JS-SDK，绑定已经 ICP 备案的域名。首发可以不做
@@ -196,6 +240,7 @@ gantt
 | 方案 | 说明 | 用户感知 |
 |---|---|---|
 | **B1 精简链路** | 保留 Pass 1.5 分类和 Pass 2 诊断；Pass 1 改为让用户自己裁剪、只上传单个动作片段（例如限 10 秒） | 多一步操作，但诊断质量有保障 |
+| **B1.5 独立 ASR + 纯视觉**（v2.1 新增） | 用语音识别（带时间戳）把视频音轨转写成文字，作为文本输入交给纯视觉模型，代替模型原生的「听」。可以保住「蹲 / 对」辨析这类视听交叉验证，不依赖 Omni 模型的效果 | 基本无感 |
 | **B2 去掉视听交叉验证** | 只做视觉分析，把音频验证放到上线之后，由 [v1 Phase 3](./Topstar_国产化模型迁移计划_v1.md#phase-3降低对单一多模态大模型的依赖长期护城河) 的击球声检测补上 | 基本无感，准确率可能稍有下降 |
 | **B3 Beta 限量** | 视频分析标记为「Beta」，每个用户限定次数 | 预期管理 |
 | **B4 首发不上视频分析** | 首发只上对话和教程推荐，视频分析作为第二版的卖点 | 核心卖点推迟 |
@@ -213,7 +258,7 @@ gantt
 
 即日起，所有新代码遵守以下规则，避免在迁移完成前增加新的耦合：
 
-1. 新代码**不再直接** `import '@google/genai'`，统一走现有的 `getAI()` 入口。抽象层完成后改走 `LLMProvider`
+1. 新代码**不再直接** `import '@google/genai'`，统一走 `server/llm/`（PR 1 之后 `getAI()` 位于 `server/llm/gemini/client.ts`）。抽象层完成后改走 `LLMProvider`
 2. 新增的模型名放在常量或环境变量里，**不在业务代码里硬编码**
 3. 新功能要考虑到在境内部署：不依赖境外服务（字体、CDN、第三方 API 都要检查）
 
@@ -246,11 +291,12 @@ gantt
 
 ## 9. 待决策事项
 
-- [ ] **云厂商选型**（W1，阻塞 ICP 备案）
+- [x] **云厂商选型**：阿里云（2026-11-05，见 D7）
 - [ ] 视频分析 Go/No-Go 的具体门槛数值（W3 前，和教练一起定）
-- [ ] 评测集标注由谁负责、什么时候交付（W1）
+- [x] 评测集标注由谁负责、什么时候交付：项目负责人，11/15 前完成约 30 条（2026-11-05，见 D9）
 - [ ] 用户视频保留期限（W3，写进隐私政策）
 - [ ] 灰度规模：邀请制还是开放注册
+- [x] 是否规划海外版：会做，但不是当前高优先级，`GeminiProvider` 长期保留（2026-11-05，见 D8）
 
 ---
 
@@ -260,3 +306,5 @@ gantt
 |---|---|---|
 | 2026-10-15 | v1 | 长期国产化规划 |
 | 2026-10-15 | v2 | 确认 3 个月内上线、H5 优先、企业主体、首发免费；按此重排为 13 周排期，新增首发范围、合规线、H5 适配、视频 Plan B、上线后路线 |
+| 2026-11-05 | v2.1 | 结合代码实测做开工前修订：① 新增决策 D7（选阿里云，火山方舟作为视频评测第二候选）、D8（海外版长期保留 GeminiProvider）、D9（评测集由项目负责人标注）；② 新增 M1/M2 未达成的进度预警；③ Phase 0.1 接口改为通用多模态 `generate()` + 能力路由 + 标准 JSON Schema + 错误归一，废弃 v1 的 `analyzeVideo()`，并拆成 PR 1–6；④ 评测集：Gemini 基线必须在迁到境内之前采集，Pass 1.5 输出需落盘；⑤ 国内模型接入：新增 OpenAI 兼容通用 adapter、TTS 格式中立化，回归对象改为服务端模板；⑥ 视频链路：新增 ffmpeg 裁剪预处理和抽帧时间戳要求；⑦ Plan B 新增 B1.5（独立 ASR + 纯视觉）；⑧ 合规：TTS 隐式标识需要容器格式；⑨ H5：v1 前后端同步下线，删除「流式回复」项（当前为非流式），统一文件大小上限；⑩ 待决策事项勾选 3 项；⑪ 第 6 节开发约束同步更新 `getAI()` 的新位置 |
+| 2026-11-05 | v2.2 | Phase 0.1 进度：PR 1–3 代码完成，在第 4.2 节勾选。说明：① 抽象层位于 `server/llm/`，配置说明见 `server/llm/config.ts` 文件头；② 行为变化（有意为之）：Pass 1 / Pass 2 新增临时性错误重试（2 次，3s 起指数退避，与 Pass 1.5 原有策略一致），Pass 1.5 改为读取 `GEMINI_VIDEO_MODEL` 并走降级链，JSON 解析失败至少重试 1 次，chat 的 token 用量写入 `meta.cost`；③ 暂不变更：`GEMINI_*` 错误码和日志事件名（前端映射和报告模板依赖它们），统一放到 PR 5 |

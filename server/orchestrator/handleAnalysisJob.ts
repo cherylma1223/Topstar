@@ -7,7 +7,7 @@
  * 参考：Phase 2-A 设计文档 §5.3 / Codex v6 §20
  */
 import db from '../db';
-import { getAI } from '../routes/v1';
+import { generate, getVideoStorage, isLLMError, errorMessage, type JSONSchema, type VideoRef } from '../llm';
 import { recommendTutorials } from '../tutorials/recommendTutorials';
 import { classifyTechnique } from '../videoAnalysis/techniqueClassifier';
 import { evaluateClassification, DecisionAction } from '../videoAnalysis/recognitionDecision';
@@ -40,6 +40,8 @@ export interface AnalysisReportPayload {
 }
 
 // ─── 错误码 ───────────────────────────────────────────────────────
+// 注意：GEMINI_* 错误码会落库并由前端 ANALYSIS_ERROR_MAP 映射为提示文案，
+// 暂时保持不变；PR 5 统一改为中立错误码（前端兼容旧码）。
 
 const ERROR_CODES = {
   NO_VALID_SEGMENTS:        'NO_VALID_SEGMENTS',
@@ -50,12 +52,7 @@ const ERROR_CODES = {
   TIMEOUT:                  'TIMEOUT',
 } as const;
 
-const DEFAULT_VIDEO_MODEL = 'gemini-3.1-pro-preview';
-const FALLBACK_VIDEO_MODELS = [
-  DEFAULT_VIDEO_MODEL,
-  'gemini-2.5-pro',
-  'gemini-2.5-flash',
-];
+/** 模型名、降级链、重试策略见 server/llm/config.ts（video_pass1 / video_pass15 / video_pass2） */
 
 /** 分 Pass 视频帧率配置（可通过环境变量覆盖） */
 const VIDEO_FPS_PASS1  = Number(process.env.VIDEO_FPS_PASS1)  || 2;
@@ -154,116 +151,73 @@ ${segmentList}
 
 // ─── Pass 1 Schema ────────────────────────────────────────────────
 
-const PASS1_SCHEMA = {
-  type: 'OBJECT',
+const PASS1_SCHEMA: JSONSchema = {
+  type: 'object',
   properties: {
     segments: {
-      type: 'ARRAY',
+      type: 'array',
       items: {
-        type: 'OBJECT',
+        type: 'object',
         properties: {
-          start: { type: 'STRING' },
-          end:   { type: 'STRING' },
-          description: { type: 'STRING' },
+          start: { type: 'string' },
+          end:   { type: 'string' },
+          description: { type: 'string' },
         },
         required: ['start', 'end'],
       },
     },
-    total_valid_seconds: { type: 'NUMBER' },
-    not_table_tennis: { type: 'BOOLEAN' },
-    unanalyzable: { type: 'BOOLEAN' },
-    reason: { type: 'STRING' },
+    total_valid_seconds: { type: 'number' },
+    not_table_tennis: { type: 'boolean' },
+    unanalyzable: { type: 'boolean' },
+    reason: { type: 'string' },
   },
   required: ['segments', 'total_valid_seconds'],
 };
 
 // ─── Pass 2 Schemas ───────────────────────────────────────────────
 
-const PROBLEM_ITEM = {
-  type: 'OBJECT',
+const PROBLEM_ITEM: JSONSchema = {
+  type: 'object',
   properties: {
-    text: { type: 'STRING' },
-    timestamp: { type: 'STRING' },
+    text: { type: 'string' },
+    timestamp: { type: 'string' },
   },
   required: ['text', 'timestamp'],
 };
 
-const TECH_SCHEMA = {
-  type: 'OBJECT',
+const TECH_SCHEMA: JSONSchema = {
+  type: 'object',
   properties: {
-    techName: { type: 'STRING' },
-    summaryText: { type: 'STRING' },
-    problems: { type: 'ARRAY', items: PROBLEM_ITEM },
-    improvements: { type: 'ARRAY', items: { type: 'STRING' } },
-    action_ids_detected: { type: 'ARRAY', items: { type: 'STRING' } },
+    techName: { type: 'string' },
+    summaryText: { type: 'string' },
+    problems: { type: 'array', items: PROBLEM_ITEM },
+    improvements: { type: 'array', items: { type: 'string' } },
+    action_ids_detected: { type: 'array', items: { type: 'string' } },
   },
   required: ['techName', 'problems', 'improvements'],
 };
 
-const MATCH_SCHEMA = {
-  type: 'ARRAY',
+const MATCH_SCHEMA: JSONSchema = {
+  type: 'array',
   items: TECH_SCHEMA,
 };
 
 // ─── 工具函数 ─────────────────────────────────────────────────────
 
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function getErrorMessage(err: any): string {
-  if (typeof err?.message === 'string') return err.message;
-  if (typeof err === 'string') return err;
-  try {
-    return JSON.stringify(err);
-  } catch {
-    return String(err);
-  }
-}
-
-function isModelUnavailableError(err: any): boolean {
-  const msg = getErrorMessage(err);
-  return (
-    msg.includes('"code":404') ||
-    msg.includes('code: 404') ||
-    msg.includes('NOT_FOUND') ||
-    msg.includes(' is not found for API version ') ||
-    msg.includes(' is not supported for generateContent')
-  );
-}
-
-function getVideoModelCandidates(preferredModel?: string): string[] {
-  const configuredModel = preferredModel || process.env.GEMINI_VIDEO_MODEL || '';
-  return [...new Set([configuredModel.trim(), ...FALLBACK_VIDEO_MODELS].filter(Boolean))];
-}
-
-async function generateContentWithModelFallback(
-  ai: any,
-  params: Record<string, any>,
-  preferredModel?: string
-): Promise<{ response: any; model: string }> {
-  const candidates = getVideoModelCandidates(preferredModel);
-  let lastModelError: any;
-
-  for (const model of candidates) {
-    try {
-      const response = await ai.models.generateContent({ ...params, model });
-      return { response, model };
-    } catch (err: any) {
-      if (!isModelUnavailableError(err)) throw err;
-
-      lastModelError = err;
-      const nextModel = candidates[candidates.indexOf(model) + 1];
-      if (nextModel) {
-        console.warn(
-          `[handleAnalysisJob] Gemini video model unavailable: ${model}; retrying with ${nextModel}`
-        );
-        continue;
-      }
+/**
+ * 把抽象层的中立错误转换为视频分析错误码（落库 / 前端映射用）
+ * @param stage 'pass1' | 'pass2'，用于 REPORT_PARSE_FAILED 的细分
+ */
+function toAnalysisError(err: unknown, stage: 'pass1' | 'pass2'): Error {
+  if (isLLMError(err)) {
+    if (err.code === 'MODEL_UNAVAILABLE') {
+      return new Error(`${ERROR_CODES.GEMINI_MODEL_UNAVAILABLE}: ${err.message}`);
+    }
+    if (err.code === 'PARSE_FAILED' || err.code === 'EMPTY_RESPONSE') {
+      return new Error(`${ERROR_CODES.REPORT_PARSE_FAILED}:${stage}`);
     }
   }
-
-  throw new Error(`${ERROR_CODES.GEMINI_MODEL_UNAVAILABLE}: ${getErrorMessage(lastModelError)}`);
+  return err instanceof Error ? err : new Error(errorMessage(err));
 }
 
 /**
@@ -364,26 +318,6 @@ function formatSeconds(totalSec: number): string {
 }
 
 /**
- * 尝试从字符串中提取第一个 JSON 块（正则提取降级）
- */
-function extractJson(text: string): any {
-  // 首先尝试直接解析
-  try { return JSON.parse(text); } catch { /* continue */ }
-
-  // 提取 [...] 或 {...}
-  const arrMatch = text.match(/\[[\s\S]*\]/);
-  if (arrMatch) {
-    try { return JSON.parse(arrMatch[0]); } catch { /* continue */ }
-  }
-  const objMatch = text.match(/\{[\s\S]*\}/);
-  if (objMatch) {
-    try { return JSON.parse(objMatch[0]); } catch { /* continue */ }
-  }
-
-  return null;
-}
-
-/**
  * 统一封装报告为 AnalysisReportPayload
  */
 function wrapReportPayload(
@@ -470,49 +404,41 @@ async function uploadAndAnalyzeVideo(
   mimeType: string,
   analysisType: string,
   videoDurationSec?: number
-): Promise<{ payload: AnalysisReportPayload; geminiFileName: string; model: string }> {
-  const ai = getAI();
+): Promise<{ payload: AnalysisReportPayload; fileRef: string; model: string }> {
+  const storage = getVideoStorage();
 
-  // 1. 上传视频到 Gemini Files API
-  VideoAnalysisLogger.info(jobId, 'GEMINI_UPLOAD_START', `Uploading video to Gemini Files API`, {
+  // 1. 上传视频到托管存储（海外版：Gemini Files API；国内版：OSS）
+  //    日志事件名沿用 GEMINI_*，供视频分析报告模板解析；PR 5 统一更名
+  VideoAnalysisLogger.info(jobId, 'GEMINI_UPLOAD_START', `Uploading video to ${storage.name}`, {
     videoPath,
     mimeType,
     analysisType,
     videoDurationSec
   });
 
-  let uploadResult: any;
+  let video: VideoRef;
   try {
-    uploadResult = await ai.files.upload({
-      file: videoPath,
-      config: { mimeType },
-    });
+    video = await storage.upload(videoPath, mimeType);
   } catch (err: any) {
     const errMsg = ERROR_CODES.GEMINI_UPLOAD_FAILED + ': ' + err.message;
     VideoAnalysisLogger.error(jobId, 'GEMINI_UPLOAD_FAILED', errMsg);
     throw new Error(errMsg);
   }
 
-  const geminiFileName: string = uploadResult.name;
-  VideoAnalysisLogger.info(jobId, 'GEMINI_UPLOAD_SUCCESS', `Successfully uploaded. File name: ${geminiFileName}. Waiting for ACTIVE state.`);
+  const fileRef = video.fileRef;
+  VideoAnalysisLogger.info(jobId, 'GEMINI_UPLOAD_SUCCESS', `Successfully uploaded. File ref: ${fileRef}. Waiting for ready state.`);
 
-  // 2. 轮询等待处理完毕 (PROCESSING → ACTIVE)
-  let file = uploadResult;
-  let waitMs = 3000;
-  while (file.state === 'PROCESSING') {
-    await sleep(waitMs);
-    waitMs = Math.min(waitMs * 1.5, 10000); // 指数退避，最长 10s
-    file = await ai.files.get({ name: geminiFileName });
-    VideoAnalysisLogger.info(jobId, 'GEMINI_PROCESSING_POLL', `File state: ${file.state}`);
-  }
-  if (file.state === 'FAILED') {
-    VideoAnalysisLogger.error(jobId, 'GEMINI_PROCESSING_FAILED', `Gemini video processing failed.`);
-    await ai.files.delete({ name: geminiFileName }).catch(() => {});
+  // 2. 等待托管侧处理完毕 (processing → ready)
+  try {
+    video = await storage.waitReady(video, state => {
+      VideoAnalysisLogger.info(jobId, 'GEMINI_PROCESSING_POLL', `File state: ${state}`);
+    });
+  } catch (err: any) {
+    VideoAnalysisLogger.error(jobId, 'GEMINI_PROCESSING_FAILED', `Video processing failed: ${err.message}`);
     throw new Error(ERROR_CODES.GEMINI_PROCESSING_FAILED);
   }
 
-  VideoAnalysisLogger.info(jobId, 'GEMINI_ACTIVE', `Video is active and ready for analysis`, { uri: file.uri });
-  const fileData = { fileUri: file.uri, mimeType: file.mimeType || mimeType };
+  VideoAnalysisLogger.info(jobId, 'GEMINI_ACTIVE', `Video is active and ready for analysis`, { uri: video.uri });
 
   try {
     // ───── Pass 1：有效片段识别 ─────────────────────────────────
@@ -521,25 +447,31 @@ async function uploadAndAnalyzeVideo(
       prompt: SEGMENT_IDENTIFICATION_PROMPT
     });
 
-    const pass1Result = await generateContentWithModelFallback(ai, {
-      contents: [{ role: 'user', parts: [
-        { fileData, videoMetadata: { fps: VIDEO_FPS_PASS1 } },
-        { text: SEGMENT_IDENTIFICATION_PROMPT },
-      ]}],
-      config: {
+    let rawPass1: any;
+    let model: string;
+    try {
+      const pass1Result = await generate({
+        capability: 'video_pass1',
+        messages: [{ role: 'user', parts: [
+          { type: 'video', ref: video, fps: VIDEO_FPS_PASS1 },
+          { type: 'text', text: SEGMENT_IDENTIFICATION_PROMPT },
+        ]}],
         temperature: 0.1,
-        responseMimeType: 'application/json',
         responseSchema: PASS1_SCHEMA,
-      },
-    });
-    const pass1Response = pass1Result.response;
-    const model = pass1Result.model;
-
-    const rawPass1 = extractJson(pass1Response.text || '');
-    VideoAnalysisLogger.info(jobId, 'PASS1_OUTPUT', 'Pass 1 raw output received', {
-      model,
-      rawPass1
-    });
+        traceId: jobId,
+      });
+      rawPass1 = pass1Result.json;
+      model = pass1Result.model;
+      VideoAnalysisLogger.info(jobId, 'PASS1_OUTPUT', 'Pass 1 raw output received', {
+        model,
+        rawPass1,
+        schemaErrors: pass1Result.schemaErrors,
+      });
+    } catch (err) {
+      const mapped = toAnalysisError(err, 'pass1');
+      VideoAnalysisLogger.error(jobId, 'PASS1_FAILED', mapped.message);
+      throw mapped;
+    }
 
     if (!rawPass1) {
       const errMsg = ERROR_CODES.REPORT_PARSE_FAILED + ':pass1';
@@ -578,8 +510,8 @@ async function uploadAndAnalyzeVideo(
     let decision: DecisionAction | undefined;
 
     if (analysisType === 'technique') {
-      // 独立分类环节 Pass 1.5
-      const classResult = await classifyTechnique(fileData, validSegments, ai, DEFAULT_VIDEO_MODEL, jobId);
+      // 独立分类环节 Pass 1.5（模型与降级链见 video_pass15 能力配置）
+      const classResult = await classifyTechnique(video, validSegments, jobId);
       decision = evaluateClassification(classResult);
       VideoAnalysisLogger.info(jobId, 'DECISION', 'Evaluation decision calculated', decision);
 
@@ -608,25 +540,31 @@ async function uploadAndAnalyzeVideo(
         prompt: pass2Prompt
       });
 
-      const pass2Result = await generateContentWithModelFallback(ai, {
-        contents: [{ role: 'user', parts: [
-          { fileData, videoMetadata: { fps: VIDEO_FPS_PASS2 } },
-          { text: pass2Prompt },
-        ]}],
-        config: {
+      let rawPass2: any;
+      try {
+        const pass2Result = await generate({
+          capability: 'video_pass2',
+          messages: [{ role: 'user', parts: [
+            { type: 'video', ref: video, fps: VIDEO_FPS_PASS2 },
+            { type: 'text', text: pass2Prompt },
+          ]}],
           temperature: 0.2,
-          responseMimeType: 'application/json',
           responseSchema: pass2Schema,
-        },
-      }, model);
-      const pass2Response = pass2Result.response;
-      finalModel = pass2Result.model;
-
-      const rawPass2 = extractJson(pass2Response.text || '');
-      VideoAnalysisLogger.info(jobId, 'PASS2_OUTPUT', 'Pass 2 raw output received', {
-        model: finalModel,
-        rawPass2
-      });
+          preferModel: model, // 优先沿用 Pass 1 实际命中的模型
+          traceId: jobId,
+        });
+        rawPass2 = pass2Result.json;
+        finalModel = pass2Result.model;
+        VideoAnalysisLogger.info(jobId, 'PASS2_OUTPUT', 'Pass 2 raw output received', {
+          model: finalModel,
+          rawPass2,
+          schemaErrors: pass2Result.schemaErrors,
+        });
+      } catch (err) {
+        const mapped = toAnalysisError(err, 'pass2');
+        VideoAnalysisLogger.error(jobId, 'PASS2_FAILED', mapped.message);
+        throw mapped;
+      }
 
       if (!rawPass2) {
         const errMsg = ERROR_CODES.REPORT_PARSE_FAILED + ':pass2';
@@ -664,13 +602,13 @@ async function uploadAndAnalyzeVideo(
 
     const payload = wrapReportPayload(analysisType, finalPayload, validSegments, tutorialsMap);
     VideoAnalysisLogger.info(jobId, 'PAYLOAD_WRAPPED', 'Analysis report payload wrapped successfully', payload);
-    return { payload, geminiFileName, model: finalModel };
+    return { payload, fileRef, model: finalModel };
 
   } finally {
-    // 清理 Gemini Files API 文件
-    VideoAnalysisLogger.info(jobId, 'CLEANUP', `Deleting Gemini file: ${geminiFileName}`);
-    await ai.files.delete({ name: geminiFileName }).catch((err: any) => {
-      VideoAnalysisLogger.warn(jobId, 'CLEANUP_WARN', `Failed to delete Gemini file ${geminiFileName}: ${err.message}`);
+    // 清理托管存储中的视频文件
+    VideoAnalysisLogger.info(jobId, 'CLEANUP', `Deleting ${storage.name} file: ${fileRef}`);
+    await storage.cleanup(video).catch((err: any) => {
+      VideoAnalysisLogger.warn(jobId, 'CLEANUP_WARN', `Failed to delete ${storage.name} file ${fileRef}: ${err.message}`);
     });
   }
 }
@@ -712,7 +650,7 @@ export async function processAnalysisJob(jobId: string): Promise<void> {
       videoDuration: job.video_duration
     });
 
-    const { payload, geminiFileName, model } = await uploadAndAnalyzeVideo(
+    const { payload, fileRef, model } = await uploadAndAnalyzeVideo(
       jobId,
       job.video_path,
       job.mime_type || 'video/mp4',
@@ -732,7 +670,7 @@ export async function processAnalysisJob(jobId: string): Promise<void> {
     ).run(
       JSON.stringify(payload),
       model,
-      geminiFileName,
+      fileRef, // PR 4 起改写入 provider + file_ref 字段
       new Date().toISOString(),
       jobId
     );
@@ -740,7 +678,7 @@ export async function processAnalysisJob(jobId: string): Promise<void> {
     VideoAnalysisLogger.info(jobId, 'JOB_SUCCESS', `Job completed successfully`);
 
   } catch (err: any) {
-    const errorCode = getErrorMessage(err) || 'UNKNOWN_ERROR';
+    const errorCode = errorMessage(err) || 'UNKNOWN_ERROR';
     VideoAnalysisLogger.error(jobId, 'JOB_FAILED', `Job failed with error: ${errorCode}`);
 
     db.prepare(

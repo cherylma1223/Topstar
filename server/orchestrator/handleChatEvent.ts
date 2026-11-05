@@ -9,7 +9,7 @@ import { matchKnowledge, getKnowledgeSummary } from '../knowledge/matcher';
 import { getActionAliasMap } from '../knowledge/loader';
 import { recommendTutorials, type RecommendedTutorial } from '../tutorials/recommendTutorials';
 import { validateTemplate } from './templateValidator';
-import { getAI, withRetry } from '../routes/v1';
+import { generate } from '../llm';
 
 // ==================
 // 类型定义
@@ -256,27 +256,27 @@ export async function handleChatEvent(req: ChatRequest): Promise<ChatResponse | 
       ? systemInstruction + '\n重要权限规则：知识库中的 VIP/核心秘诀内容只对会员开放。你绝对不能在任何段落中提及、改写、复述或暗示这部分内容；如果无法确认，宁可省略。'
       : systemInstruction;
 
-    // 5. 调用 LLM 生成回复
-    const contents = (req.history || []).map(msg => ({
-      role: msg.sender === 'user' ? 'user' as const : 'model' as const,
-      parts: [{ text: msg.content }],
+    // 5. 调用 LLM 生成回复（重试 / 降级策略见 server/llm/config.ts 的 chat 能力配置）
+    const messages = (req.history || []).map(msg => ({
+      role: msg.sender === 'user' ? 'user' as const : 'assistant' as const,
+      parts: [{ type: 'text' as const, text: msg.content }],
     }));
 
-    contents.push({
+    messages.push({
       role: 'user' as const,
-      parts: [{ text: req.message }],
+      parts: [{ type: 'text' as const, text: req.message }],
     });
 
     let answerText = '';
+    let usage: { inputTokens?: number; outputTokens?: number } | undefined;
     try {
-      const response = await withRetry(() => getAI().models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: contents,
-        config: {
-          systemInstruction: finalSystemInstruction,
-        },
-      }));
-      answerText = response.text || '';
+      const result = await generate({
+        capability: 'chat',
+        system: finalSystemInstruction,
+        messages,
+      });
+      answerText = result.text || '';
+      usage = result.usage;
     } catch (err: any) {
       console.error(`[Orchestrator] LLM generation failed:`, err.message);
       return {
@@ -323,7 +323,7 @@ export async function handleChatEvent(req: ChatRequest): Promise<ChatResponse | 
       report: null,
       meta: {
         request_id: requestId,
-        cost: { input_tokens: 0, output_tokens: 0 }, // TODO: 后续从 API response 提取
+        cost: { input_tokens: usage?.inputTokens ?? 0, output_tokens: usage?.outputTokens ?? 0 },
         degraded: intentResult.source === 'fallback',
         intent_source: intentResult.source,
         intent_confidence: intentResult.confidence,

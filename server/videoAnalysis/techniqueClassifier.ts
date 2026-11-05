@@ -1,9 +1,34 @@
 import { VideoSegment } from '../orchestrator/handleAnalysisJob';
 import { getRecognitionRules } from './analysisKnowledgeLoader';
 import { VideoAnalysisLogger } from './videoAnalysisLogger';
+import { generate, isLLMError, getPrimaryModel, type JSONSchema, type VideoRef } from '../llm';
 
 /** Pass 1.5 技术分类帧率（需高精度捕捉动作特征） */
 const VIDEO_FPS_PASS15 = Number(process.env.VIDEO_FPS_PASS15) || 5;
+
+const PASS15_SCHEMA: JSONSchema = {
+  type: 'object',
+  properties: {
+    audio_transcript: { type: 'string' },
+    analysis_notes: { type: 'string' },
+    primary_action_id: { type: 'string' },
+    confidence: { type: 'number' },
+    evidence: { type: 'array', items: { type: 'string' } },
+    top_candidates: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          action_id: { type: 'string' },
+          probability: { type: 'number' }
+        },
+        required: ['action_id', 'probability']
+      }
+    },
+    notable_missing_cues: { type: 'array', items: { type: 'string' } }
+  },
+  required: ['audio_transcript', 'analysis_notes', 'primary_action_id', 'confidence', 'evidence', 'top_candidates', 'notable_missing_cues']
+};
 
 export interface TopCandidate {
   action_id: string;
@@ -21,10 +46,8 @@ export interface ClassificationResult {
 }
 
 export async function classifyTechnique(
-  fileData: { fileUri: string; mimeType: string },
+  video: VideoRef,
   segments: VideoSegment[],
-  aiClient: any,
-  modelName: string,
   jobId: string
 ): Promise<ClassificationResult> {
   const rules = getRecognitionRules();
@@ -137,115 +160,60 @@ export async function classifyTechnique(
   "notable_missing_cues": ["预期该动作该有但视频中看不到或未做出的线索..."]
 }`;
 
-  VideoAnalysisLogger.info(jobId, 'PASS1.5_START', `Sending classification request to ${modelName}`, {
-    model: modelName,
+  const primaryModel = getPrimaryModel('video_pass15') || 'unknown';
+  VideoAnalysisLogger.info(jobId, 'PASS1.5_START', `Sending classification request to ${primaryModel}`, {
+    model: primaryModel,
     fps: VIDEO_FPS_PASS15,
     segmentsCount: segments.length,
     rulesCount: rules.actions.length,
   });
 
-  const PASS15_SCHEMA = {
-    type: 'OBJECT',
-    properties: {
-      audio_transcript: { type: 'STRING' },
-      analysis_notes: { type: 'STRING' },
-      primary_action_id: { type: 'STRING' },
-      confidence: { type: 'NUMBER' },
-      evidence: { type: 'ARRAY', items: { type: 'STRING' } },
-      top_candidates: {
-        type: 'ARRAY',
-        items: {
-          type: 'OBJECT',
-          properties: {
-            action_id: { type: 'STRING' },
-            probability: { type: 'NUMBER' }
-          },
-          required: ['action_id', 'probability']
+  // 2. 调用模型（临时性错误重试、模型降级、JSON 解析与校验由 server/llm 统一处理）
+  let rawResult: any;
+  let usedModel = primaryModel;
+  try {
+    const result = await generate({
+      capability: 'video_pass15',
+      messages: [
+        {
+          role: 'user',
+          parts: [
+            { type: 'video', ref: video, fps: VIDEO_FPS_PASS15 },
+            { type: 'text', text: knowledgePrompt }
+          ]
         }
-      },
-      notable_missing_cues: { type: 'ARRAY', items: { type: 'STRING' } }
-    },
-    required: ['audio_transcript', 'analysis_notes', 'primary_action_id', 'confidence', 'evidence', 'top_candidates', 'notable_missing_cues']
+      ],
+      temperature: 0.2, // Low temperature for strict classification consistency and layered reasoning
+      responseSchema: PASS15_SCHEMA,
+      traceId: jobId,
+    });
+    rawResult = result.json ?? {};
+    usedModel = result.model;
+    VideoAnalysisLogger.info(jobId, 'PASS1.5_OUTPUT', 'Pass 1.5 raw output received', {
+      model: usedModel,
+      schemaErrors: result.schemaErrors,
+      ...rawResult,
+    });
+  } catch (err: any) {
+    if (isLLMError(err) && (err.code === 'PARSE_FAILED' || err.code === 'EMPTY_RESPONSE')) {
+      VideoAnalysisLogger.error(jobId, 'PASS1.5_PARSE_FAILED', `Failed to parse classification JSON: ${err.message}`);
+      throw new Error(`RECOGNITION_PARSE_FAILED: ${err.message}`);
+    }
+    VideoAnalysisLogger.error(jobId, 'PASS1.5_FAILED', `Classification request failed: ${err.message}`);
+    throw err;
+  }
+
+  // 3. 字段兜底
+  const result: ClassificationResult = {
+    primary_action_id: rawResult.primary_action_id || 'unknown',
+    confidence: typeof rawResult.confidence === 'number' ? rawResult.confidence : 0,
+    evidence: Array.isArray(rawResult.evidence) ? rawResult.evidence : [],
+    top_candidates: Array.isArray(rawResult.top_candidates) ? rawResult.top_candidates : [],
+    notable_missing_cues: Array.isArray(rawResult.notable_missing_cues) ? rawResult.notable_missing_cues : [],
+    audio_transcript: rawResult.audio_transcript || '',
+    analysis_notes: rawResult.analysis_notes || ''
   };
 
-  // 2. Call Gemini (with retry for transient failures)
-  let responseText = '';
-  const MAX_RETRIES = 2;
-  const RETRY_DELAY_MS = 3000;
-
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const response = await aiClient.models.generateContent({
-        model: modelName,
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              { fileData, videoMetadata: { fps: VIDEO_FPS_PASS15 } },
-              { text: knowledgePrompt }
-            ]
-          }
-        ],
-        config: {
-          temperature: 0.2, // Low temperature for strict classification consistency and layered reasoning
-          responseMimeType: 'application/json',
-          responseSchema: PASS15_SCHEMA,
-        }
-      });
-
-      responseText = response.text || '';
-      break; // success, exit retry loop
-    } catch (err: any) {
-      const isRetryable = err.message?.includes('fetch failed')
-        || err.message?.includes('503')
-        || err.message?.includes('429')
-        || err.message?.includes('UNAVAILABLE')
-        || err.message?.includes('overloaded');
-
-      if (attempt < MAX_RETRIES && isRetryable) {
-        const delay = RETRY_DELAY_MS * Math.pow(2, attempt);
-        VideoAnalysisLogger.warn(jobId, 'PASS1.5_RETRY',
-          `Attempt ${attempt + 1} failed: ${err.message}. Retrying in ${delay}ms...`);
-        await new Promise(r => setTimeout(r, delay));
-        continue;
-      }
-
-      VideoAnalysisLogger.error(jobId, 'PASS1.5_FAILED',
-        `Gemini classification request failed after ${attempt + 1} attempt(s): ${err.message}`);
-      throw err;
-    }
-  }
-
-  if (!responseText) {
-    const errorMsg = 'Empty response from model during classification.';
-    VideoAnalysisLogger.error(jobId, 'PASS1.5_FAILED', errorMsg);
-    throw new Error(errorMsg);
-  }
-
-  // 3. Parse JSON
-  try {
-    let rawResult = JSON.parse(responseText);
-    VideoAnalysisLogger.info(jobId, 'PASS1.5_OUTPUT', 'Pass 1.5 raw output received', rawResult);
-
-    // Handle case where Gemini returns an array of objects instead of a single object
-    if (Array.isArray(rawResult)) {
-      rawResult = rawResult.length > 0 ? rawResult[0] : {};
-    }
-
-    const result: ClassificationResult = {
-      primary_action_id: rawResult.primary_action_id || 'unknown',
-      confidence: typeof rawResult.confidence === 'number' ? rawResult.confidence : 0,
-      evidence: Array.isArray(rawResult.evidence) ? rawResult.evidence : [],
-      top_candidates: Array.isArray(rawResult.top_candidates) ? rawResult.top_candidates : [],
-      notable_missing_cues: Array.isArray(rawResult.notable_missing_cues) ? rawResult.notable_missing_cues : [],
-      audio_transcript: rawResult.audio_transcript || '',
-      analysis_notes: rawResult.analysis_notes || ''
-    };
-
-    VideoAnalysisLogger.info(jobId, 'PASS1.5_COMPLETE', `Classification complete: ${result.primary_action_id} (conf: ${result.confidence})`, result);
-    return result;
-  } catch (err: any) {
-    VideoAnalysisLogger.error(jobId, 'PASS1.5_PARSE_FAILED', `Failed to parse classification JSON. Raw: ${responseText}`);
-    throw new Error(`RECOGNITION_PARSE_FAILED: ${err.message}`);
-  }
+  VideoAnalysisLogger.info(jobId, 'PASS1.5_COMPLETE', `Classification complete: ${result.primary_action_id} (conf: ${result.confidence}, model: ${usedModel})`, result);
+  return result;
 }

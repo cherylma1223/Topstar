@@ -1,44 +1,13 @@
 import express from 'express';
-import { GoogleGenAI, Modality } from '@google/genai';
+import { Modality } from '@google/genai';
 import { matchKnowledge, getKnowledgeSummary } from '../knowledge/matcher';
+import { getAI } from '../llm/gemini/client';
+import { withRetry } from '../llm/retry';
 
 const router = express.Router();
 
-// AI client - lazy init
-let ai: GoogleGenAI | null = null;
-function getAI(): GoogleGenAI {
-  if (!ai) {
-    ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
-  }
-  return ai;
-}
-
 function buildTTSPrompt(text: string): string {
   return `Please read the following text aloud in a professional and encouraging tone: ${text.trim()}`;
-}
-
-/**
- * 指数退避重试：处理 503/429 等临时性错误
- */
-async function withRetry<T>(operation: () => Promise<T>, maxRetries = 3, initialDelay = 1000): Promise<T> {
-  let lastError: Error | undefined;
-  for (let i = 0; i <= maxRetries; i++) {
-    try {
-      return await operation();
-    } catch (error: any) {
-      lastError = error;
-      const msg = error?.message || '';
-      const isRetryable = msg.includes('503') || msg.includes('429') || msg.includes('overloaded') || msg.includes('UNAVAILABLE');
-      if (i < maxRetries && isRetryable) {
-        const delay = initialDelay * Math.pow(2, i);
-        console.warn(`Gemini API overloaded. Retrying in ${delay}ms... (${i + 1}/${maxRetries})`);
-        await new Promise(r => setTimeout(r, delay));
-        continue;
-      }
-      throw error;
-    }
-  }
-  throw lastError;
 }
 
 // ---- 健康检查 ----
@@ -168,4 +137,4 @@ router.post('/ai/image', async (req, res) => {
 });
 
 export default router;
-export { withRetry, getAI };
+
