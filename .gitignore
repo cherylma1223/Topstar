@@ -21,3 +21,7 @@ server/uploads/*
 *.db-shm
 *.db-wal
 .agents/
+
+# 评测集视频（体积大，不提交；标注表 eval/labels 和评测结果 eval/runs 会提交）
+eval/videos/*
+!eval/videos/.gitkeep

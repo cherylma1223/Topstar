@@ -10,7 +10,8 @@
     "import-tutorials": "tsx scripts/importTutorials.ts",
     "sync-tutorials": "tsx scripts/0_sync-tutorials.ts",
     "bootstrap-scores": "tsx scripts/bootstrapQualityScores.ts",
-    "test": "node --import tsx --test \"llm/__tests__/*.test.ts\" \"video/__tests__/*.test.ts\" \"__tests__/*.test.ts\" \"utils/__tests__/*.test.ts\""
+    "eval": "tsx eval/evalVideo.ts",
+    "test": "node --import tsx --test \"llm/__tests__/*.test.ts\" \"video/__tests__/*.test.ts\" \"__tests__/*.test.ts\" \"utils/__tests__/*.test.ts\" \"eval/__tests__/*.test.ts\" \"videoAnalysis/__tests__/*.test.ts\""
   },
   "keywords": [],
   "author": "",

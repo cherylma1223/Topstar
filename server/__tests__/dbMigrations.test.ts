@@ -25,7 +25,7 @@ test('旧库：补 provider / file_ref 两列，并回填有文件引用的历�
   const db = createLegacyDb();
   const result = migrateAnalysisJobs(db);
 
-  assert.deepEqual(result.added, ['provider', 'file_ref']);
+  assert.deepEqual(result.added, ['provider', 'file_ref', 'trace']);
   assert.equal(result.backfilled, 1);
 
   const rows = db.prepare(`SELECT id, provider, file_ref, gemini_file_name FROM analysis_jobs ORDER BY id`).all();
@@ -49,7 +49,7 @@ test('幂等：重复执行不再加列、不再回填，也不覆盖已有的�
 
 test('新库（建表时已含新列）：直接通过，不报错', () => {
   const db = new Database(':memory:');
-  db.exec(`CREATE TABLE analysis_jobs (id TEXT PRIMARY KEY, gemini_file_name TEXT, provider TEXT, file_ref TEXT)`);
+  db.exec(`CREATE TABLE analysis_jobs (id TEXT PRIMARY KEY, gemini_file_name TEXT, provider TEXT, file_ref TEXT, trace TEXT)`);
   assert.deepEqual(migrateAnalysisJobs(db), { added: [], backfilled: 0 });
 });
 

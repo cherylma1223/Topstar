@@ -1,7 +1,7 @@
-import { VideoSegment } from '../orchestrator/handleAnalysisJob';
+import type { VideoSegment } from './pipeline';
 import { getRecognitionRules } from './analysisKnowledgeLoader';
 import { VideoAnalysisLogger } from './videoAnalysisLogger';
-import { generate, isLLMError, getPrimaryModel, type JSONSchema, type VideoRef } from '../llm';
+import { generate, isLLMError, getPrimaryModel, type JSONSchema, type Usage, type VideoRef } from '../llm';
 
 /** Pass 1.5 技术分类帧率（需高精度捕捉动作特征） */
 const VIDEO_FPS_PASS15 = Number(process.env.VIDEO_FPS_PASS15) || 5;
@@ -45,11 +45,20 @@ export interface ClassificationResult {
   analysis_notes: string;
 }
 
-export async function classifyTechnique(
+/** 分类结果及调用元信息（模型、token 用量、Schema 校验问题），供评测与 trace 使用 */
+export interface ClassificationOutcome {
+  result: ClassificationResult;
+  /** 实际命中的模型（发生降级时与首选不同） */
+  model: string;
+  usage?: Usage;
+  schemaErrors?: string[];
+}
+
+export async function classifyTechniqueDetailed(
   video: VideoRef,
   segments: VideoSegment[],
   jobId: string
-): Promise<ClassificationResult> {
+): Promise<ClassificationOutcome> {
   const rules = getRecognitionRules();
 
   if (!rules) {
@@ -171,6 +180,8 @@ export async function classifyTechnique(
   // 2. 调用模型（临时性错误重试、模型降级、JSON 解析与校验由 server/llm 统一处理）
   let rawResult: any;
   let usedModel = primaryModel;
+  let usage: Usage | undefined;
+  let schemaErrors: string[] | undefined;
   try {
     const result = await generate({
       capability: 'video_pass15',
@@ -189,6 +200,8 @@ export async function classifyTechnique(
     });
     rawResult = result.json ?? {};
     usedModel = result.model;
+    usage = result.usage;
+    schemaErrors = result.schemaErrors;
     VideoAnalysisLogger.info(jobId, 'PASS1.5_OUTPUT', 'Pass 1.5 raw output received', {
       model: usedModel,
       schemaErrors: result.schemaErrors,
@@ -215,5 +228,14 @@ export async function classifyTechnique(
   };
 
   VideoAnalysisLogger.info(jobId, 'PASS1.5_COMPLETE', `Classification complete: ${result.primary_action_id} (conf: ${result.confidence}, model: ${usedModel})`, result);
-  return result;
+  return { result, model: usedModel, usage, schemaErrors };
+}
+
+/** 只要分类结果、不关心模型和用量的简化入口（调试脚本使用） */
+export async function classifyTechnique(
+  video: VideoRef,
+  segments: VideoSegment[],
+  jobId: string
+): Promise<ClassificationResult> {
+  return (await classifyTechniqueDetailed(video, segments, jobId)).result;
 }

@@ -55,6 +55,7 @@ db.exec(`
     gemini_file_name      TEXT,   -- 已废弃：仅保留历史数据，新任务写 provider + file_ref
     provider              TEXT,   -- 视频托管实现名（gemini_files / 后续 aliyun_oss）
     file_ref              TEXT,   -- 托管侧文件标识
+    trace                 TEXT,   -- JSON：各环节原始输出 / 模型 / 耗时 / token 用量（见 videoAnalysis/pipeline.ts）
     attempt_count         INTEGER DEFAULT 0,
     created_at            TEXT NOT NULL,
     started_at            TEXT,

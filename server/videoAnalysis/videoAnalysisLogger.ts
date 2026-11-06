@@ -5,6 +5,8 @@ const LOG_FILE_PATH = path.join(__dirname, '../video_analysis.log');
 
 export class VideoAnalysisLogger {
   private static writeLog(jobId: string, stage: string, type: 'INFO' | 'WARN' | 'ERROR', message: string, payload?: any) {
+    // 评测脚本（eval/）设置 VIDEO_ANALYSIS_LOG_DISABLED=1，避免批量评测的日志污染线上任务日志；控制台输出不受影响
+    if (process.env.VIDEO_ANALYSIS_LOG_DISABLED === '1') return;
     const timestamp = new Date().toISOString();
     const payloadStr = payload ? `\nPayload: ${JSON.stringify(payload, null, 2)}` : '';
     const logEntry = `[${timestamp}] [Job: ${jobId}] [Stage: ${stage}] [${type}] ${message}${payloadStr}\n----------------------------------------\n`;

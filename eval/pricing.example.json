@@ -1,0 +1,5 @@
+{
+  "_说明": "复制为 pricing.json 后填写。价格请以各厂商官方定价页为准，单位是「每百万 token」。评测不内置任何价格；没填的模型，报告里的费用显示「未计算」。键名必须和报告里的模型名完全一致。",
+  "gemini-3.1-pro-preview": { "inputPerMTok": null, "outputPerMTok": null, "currency": "USD" },
+  "gemini-4-argon": { "inputPerMTok": null, "outputPerMTok": null, "currency": "USD" }
+}

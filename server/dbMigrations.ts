@@ -20,16 +20,18 @@ export interface MigrationResult {
 }
 
 /**
- * analysis_jobs：把 Gemini 专用的 `gemini_file_name` 泛化为 `provider` + `file_ref`
+ * analysis_jobs：把 Gemini 专用的 `gemini_file_name` 泛化为 `provider` + `file_ref`，并新增 `trace`
  *
  * - provider：视频托管实现的名称（VideoStorage.name，如 gemini_files / 后续的 aliyun_oss）
  * - file_ref：托管侧的文件标识（Gemini 为 files/xxx；OSS 为 object key）
  * - gemini_file_name：已废弃，只保留历史数据，新任务不再写入
+ * - trace：JSON，各环节（Pass 1 / 1.5 / 2）的原始输出、命中的模型、耗时、token 用量和 Schema 校验问题，
+ *   成功和失败的任务都会写入；此前 Pass 1.5 的结果只存在于日志里。历史任务该列为空
  */
 export function migrateAnalysisJobs(db: DatabaseType): MigrationResult {
   const added: string[] = [];
 
-  for (const column of ['provider', 'file_ref']) {
+  for (const column of ['provider', 'file_ref', 'trace']) {
     if (!hasColumn(db, 'analysis_jobs', column)) {
       db.exec(`ALTER TABLE analysis_jobs ADD COLUMN ${column} TEXT`);
       added.push(column);

@@ -1,0 +1,14 @@
+﻿# 评测集标注表。一行 = 一个视频。以 # 开头的行是说明，程序会忽略。详细说明见 eval/README.md
+# video_id：这个视频的唯一短名，只能用英文字母 数字 下划线 点 连字符，例如 dapanpan2
+# video_file：视频文件名，文件放在 eval/videos/ 目录下
+# action_id：动作 ID，必须是知识库里的 ID（npm run eval -- validate 会列出可选值）；整段没有有效技术动作填 none；没把握就留空
+# segments：有效击球片段，格式 00:00-00:19 多个用分号分隔，例如 00:00-00:19; 00:25-00:40；整段都没有有效击球填 none；没标注就留空
+# has_voice：教练口令是否清晰可辨，填 yes 或 no，可留空
+# issues：这个视频的主要问题点，填诊断规则的 issue_id，多个用分号分隔，例如 bh_drive_net; bh_drive_elbow_unstable；确认没有问题填 none；没标注就留空
+# tags：拍摄条件标签，多个用分号分隔，例如 side-view; dim-light; noisy；可留空
+# notes：备注，可留空
+# source_job：来自哪个已上传任务的 ID，用 add 命令添加时自动填写，手工添加可留空
+video_id,video_file,action_id,segments,has_voice,issues,tags,notes,source_job
+mashitong-b,mashitong-b.mov,bh_drive,,,,,原文件名：马诗彤-b.MOV,4b06475e-55e4-41f9-8f77-658b4904a856
+dapanpan2,dapanpan2.mov,bh_loop,,,,,原文件名：大盼盼2.MOV,b2d271d0-1b3c-4c1a-9a67-a5269159e53c
+dppbl,dppbl.MOV,bh_loop,,,,,视频在公司电脑 /Users/dong/Documents/Top star FC/训练视频/dppbl.MOV；需复制到 eval/videos/dppbl.MOV 后才能参与评测；金标准由项目负责人于 2026-11-06 确认,
