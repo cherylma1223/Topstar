@@ -35,4 +35,4 @@ eval/
   report.md    # 自动生成的对比报告
 ```
 
-指标与门槛参见 `2026-11-06-gemini-video-model-comparison.md` 第 7 节。
+指标与门槛参见 `2026-11-06-gemini-video-model-comparison.md` 附录 A。
