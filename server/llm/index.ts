@@ -103,7 +103,7 @@ async function generateOnce(provider: LLMProvider, req: GenerateRequest, model: 
 export async function generate(req: GenerateRequest): Promise<GenerateResult> {
   const cfg = getCapabilityConfig(req.capability);
   const provider = getProvider(cfg.provider);
-  const models = [...new Set([req.preferModel, ...cfg.models].filter((m): m is string => !!m))];
+  const models = cfg.models;
 
   return withModelFallback(req.capability, models, req.traceId, model =>
     withRetryPolicy(cfg.retry, tag(req.capability, model, req.traceId), () => generateOnce(provider, req, model))

@@ -550,7 +550,6 @@ async function uploadAndAnalyzeVideo(
           ]}],
           temperature: 0.2,
           responseSchema: pass2Schema,
-          preferModel: model, // 优先沿用 Pass 1 实际命中的模型
           traceId: jobId,
         });
         rawPass2 = pass2Result.json;

@@ -65,8 +65,6 @@ export interface GenerateRequest {
   /** 标准 JSON Schema（小写 type）。提供时要求模型输出 JSON，并在抽象层解析与校验 */
   responseSchema?: JSONSchema;
   temperature?: number;
-  /** 优先尝试的模型（例如 Pass 2 沿用 Pass 1 实际命中的模型），之后再走配置的降级链 */
-  preferModel?: string;
   /** 日志关联 ID（如视频分析 jobId），可选 */
   traceId?: string;
 }

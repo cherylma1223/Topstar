@@ -4,7 +4,7 @@ import { getCapabilityConfig, getVideoStorageName } from '../config';
 import { LLMError } from '../errors';
 
 const ENV_KEYS = [
-  'DEPLOY_REGION', 'GEMINI_VIDEO_MODEL', 'VIDEO_STORAGE',
+  'DEPLOY_REGION', 'VIDEO_STORAGE',
   'LLM_CHAT_PROVIDER', 'LLM_CHAT_MODELS', 'LLM_CHAT_MAX_RETRIES', 'LLM_CHAT_RETRY_DELAY_MS',
   'LLM_VIDEO_PASS15_MODELS', 'LLM_INTENT_PROVIDER', 'LLM_INTENT_MODELS',
 ];
@@ -20,12 +20,6 @@ test('global 默认配置与迁移前线上行为一致', () => {
   assert.deepEqual(getCapabilityConfig('video_pass1').models, ['gemini-3.1-pro-preview', 'gemini-2.5-pro', 'gemini-2.5-flash']);
   assert.deepEqual(getCapabilityConfig('tts').models, ['gemini-2.5-flash-preview-tts']);
   assert.equal(getVideoStorageName(), 'gemini_files');
-});
-
-test('GEMINI_VIDEO_MODEL 插到所有 video_* 降级链最前面（含 Pass 1.5），且去重', () => {
-  process.env.GEMINI_VIDEO_MODEL = 'gemini-2.5-pro';
-  assert.deepEqual(getCapabilityConfig('video_pass15').models, ['gemini-2.5-pro', 'gemini-3.1-pro-preview', 'gemini-2.5-flash']);
-  assert.deepEqual(getCapabilityConfig('chat').models, ['gemini-3-flash-preview']);
 });
 
 test('环境变量逐项覆盖模型、重试次数和重试间隔', () => {

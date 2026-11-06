@@ -608,7 +608,7 @@ const ANALYSIS_ERROR_MAP: Record<string, string> = {
   NO_VALID_SEGMENTS:            '未识别到有效的乒乓球动作片段，请上传包含击球练习或比赛回合的视频',
   'NO_VALID_SEGMENTS:not_table_tennis': '视频内容似乎不是乒乓球相关，请重新上传',
   GEMINI_UPLOAD_FAILED:         '视频上传失败，请检查网络后重试',
-  GEMINI_MODEL_UNAVAILABLE:     '当前视频分析模型不可用，请检查 GEMINI_VIDEO_MODEL 配置或稍后重试',
+  GEMINI_MODEL_UNAVAILABLE:     '当前视频分析模型不可用，请稍后重试或联系管理员检查服务端模型配置',
   GEMINI_PROCESSING_FAILED:     '视频处理失败，请稍后重试',
   REPORT_PARSE_FAILED:          '分析结果解析失败，请重试',
   'REPORT_PARSE_FAILED:pass1':  '片段识别失败，请重试',

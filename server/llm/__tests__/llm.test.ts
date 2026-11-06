@@ -45,7 +45,7 @@ const req = (extra: Partial<GenerateRequest> = {}): GenerateRequest => ({
 const savedWarn = console.warn;
 beforeEach(() => {
   console.warn = () => {};
-  for (const k of Object.keys(process.env)) if (k.startsWith('LLM_') || k === 'GEMINI_VIDEO_MODEL') delete process.env[k];
+  for (const k of Object.keys(process.env)) if (k.startsWith('LLM_')) delete process.env[k];
 });
 after(() => {
   console.warn = savedWarn;
@@ -93,15 +93,6 @@ test('INVALID_REQUEST 不重试也不降级', async () => {
   useModels('VIDEO_PASS1', ['a', 'b'], 3);
   await assert.rejects(generate(req()), (e: unknown) => e instanceof LLMError && e.code === 'INVALID_REQUEST');
   assert.deepEqual(fake.calls, ['a']);
-});
-
-test('preferModel 排在降级链最前面', async () => {
-  const fake = new FakeProvider({ b: [{ text: 'ok' }] });
-  __setProviderForTest('gemini', fake);
-  useModels('VIDEO_PASS2', ['a', 'b']);
-  const r = await generate(req({ capability: 'video_pass2', preferModel: 'b' }));
-  assert.equal(r.model, 'b');
-  assert.deepEqual(fake.calls, ['b']);
 });
 
 // ─── 结构化输出 ──────────────────────────────────────────────────

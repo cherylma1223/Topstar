@@ -10,7 +10,6 @@
  *   LLM_<CAP>_MAX_RETRIES=2              临时性错误的重试次数
  *   LLM_<CAP>_RETRY_DELAY_MS=1000        首次重试等待时间（之后指数翻倍）
  *   VIDEO_STORAGE=gemini_files           视频托管实现
- *   GEMINI_VIDEO_MODEL=xxx               兼容旧配置：插到所有 video_* 能力降级链的最前面
  *
  * <CAP> 为能力名大写：CHAT / INTENT / VIDEO_PASS1 / VIDEO_PASS15 / VIDEO_PASS2 / TTS
  *
@@ -89,9 +88,6 @@ export function getCapabilityConfig(cap: Capability): CapabilityConfig {
   let models = parseList(process.env[envKey(cap, 'MODELS')]);
   if (models.length === 0) models = base ? [...base.models] : [];
 
-  if (cap.startsWith('video_') && process.env.GEMINI_VIDEO_MODEL && provider === 'gemini') {
-    models = [process.env.GEMINI_VIDEO_MODEL.trim(), ...models];
-  }
   models = [...new Set(models.filter(Boolean))];
 
   const retriesRaw = process.env[envKey(cap, 'MAX_RETRIES')];
