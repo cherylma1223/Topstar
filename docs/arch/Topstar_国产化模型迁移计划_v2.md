@@ -2,7 +2,7 @@
 
 > **状态**：已确认路线，**Phase 0.1 已于 2026-11-05 启动**（v2.1 修订，见第 10 节变更记录）
 > **创建日期**：2026-10-15
-> **最近修订**：2026-11-05
+> **最近修订**：2026-11-06
 > **上一版**：[Topstar_国产化模型迁移计划_v1.md](./Topstar_国产化模型迁移计划_v1.md)（长期规划版。v1 中背景分析、依赖盘点、Phase 3 的内容仍然有效）
 > **上线目标**：**12 月下旬灰度上线，2027-01-15 前正式上线**（2027 年春节是 2 月 6 日，节前留出缓冲）
 
@@ -176,8 +176,8 @@ interface VideoStorage {
 - [x] **PR 1 搬家**：把 `getAI` / `withRetry` 从 `routes/v1.ts` 移到 `server/llm/`，业务代码改引用，行为零变化（2026-11-05 完成）
 - [x] **PR 2 接口 + GeminiProvider**：`types.ts`、能力路由配置（环境变量，每项能力单独配置模型和降级链）、`GeminiProvider`、`GeminiFilesStorage`、JSON Schema 转换与校验、错误归一。首发去掉 `generateImage`（2026-11-05 完成，22 个单元测试，`npm test`）
 - [x] **PR 3 业务切换**：chat / intent / Pass 1 / 1.5 / 2 / TTS 全部改走 `LLMProvider`；顺带修复 Pass 1.5 写死模型、不走降级链的问题（2026-11-05 代码完成，已通过类型检查和假 provider 冒烟测试；**还需用真实 Gemini Key 手动回归 2–3 个视频和几轮对话**）
-- [ ] **PR 4 VideoStorage + DB**：`analysis_jobs` 新增 `provider` + `file_ref` 字段（补一个轻量的迁移，保留旧的 `gemini_file_name` 列兼容历史数据）；用 ffprobe 补写 `video_duration`（目前从来没有写入，导致片段截断不生效）
-- [ ] **PR 5 下线 v1 + 图片生成**：**前后端在同一个 PR 里一起下线**（前端目前仍在调用 v1 的 chat 降级、TTS 降级和图片接口）；前端错误码改成中立码，同时兼容旧的 `GEMINI_*` 码
+- [x] **PR 4 VideoStorage + DB**：`analysis_jobs` 新增 `provider` + `file_ref` 字段（`server/dbMigrations.ts`，启动时幂等执行，保留旧的 `gemini_file_name` 列兼容历史数据并回填）；用 ffprobe 补写 `video_duration`（上传时探测，失败则任务开始时补测；目前此前从来没有写入，导致片段截断不生效）（2026-11-06 完成，`GeminiFilesStorage` 已在 PR 2 随接口一起实现）
+- [x] **PR 5 下线 v1 + 图片生成**：**前后端在同一个 PR 里一起下线**（前端此前仍在调用 v1 的 chat 降级、TTS 降级和图片接口）；前端错误码改成中立码，同时兼容旧的 `GEMINI_*` 码（2026-11-06 完成，详见变更记录 v2.5）
 - [ ] **PR 6 评测基线**：见下方「精简评测集」
 
 #### 精简评测集（W1–2）
@@ -223,7 +223,7 @@ interface VideoStorage {
 
 现有的 React + Vite 前端**不需要重写**，只做以下适配：
 
-- [ ] 删除图片生成和 v1 接口的调用（和后端下线 v1 放在同一个 PR，见 4.2 的 PR 5）；清理 [Leftovers](../coding_plan/phase1/Topstar_Phase1_Leftovers_TODO.md) 里的 mock 报告和硬编码的假链接
+- [x] 删除图片生成和 v1 接口的调用（和后端下线 v1 放在同一个 PR，见 4.2 的 PR 5，2026-11-06 完成）；清理 [Leftovers](../coding_plan/phase1/Topstar_Phase1_Leftovers_TODO.md) 里的 mock 报告和硬编码的假链接（后半句尚未做）
 - [ ] **视频上传**：在微信内置浏览器里测试 `<input type="file" accept="video/*">`；大文件改为分片上传或直传对象存储（签名 URL），并显示上传进度；统一前端提示和后端的文件大小上限（目前前端提示 100MB，后端限制是 500MB）
 - [ ] **TTS 播放**：移动端浏览器（尤其 iOS 微信）禁止自动播放音频，需要用户点击后才能播放；解码改为按 `mime_type` 处理（见 4.2）
 - [x] ~~**流式回复**：确认在微信浏览器里能正常工作~~（v2.1：当前 chat 是非流式接口，这一项不需要做）
@@ -308,3 +308,7 @@ interface VideoStorage {
 | 2026-10-15 | v2 | 确认 3 个月内上线、H5 优先、企业主体、首发免费；按此重排为 13 周排期，新增首发范围、合规线、H5 适配、视频 Plan B、上线后路线 |
 | 2026-11-05 | v2.1 | 结合代码实测做开工前修订：① 新增决策 D7（选阿里云，火山方舟作为视频评测第二候选）、D8（海外版长期保留 GeminiProvider）、D9（评测集由项目负责人标注）；② 新增 M1/M2 未达成的进度预警；③ Phase 0.1 接口改为通用多模态 `generate()` + 能力路由 + 标准 JSON Schema + 错误归一，废弃 v1 的 `analyzeVideo()`，并拆成 PR 1–6；④ 评测集：Gemini 基线必须在迁到境内之前采集，Pass 1.5 输出需落盘；⑤ 国内模型接入：新增 OpenAI 兼容通用 adapter、TTS 格式中立化，回归对象改为服务端模板；⑥ 视频链路：新增 ffmpeg 裁剪预处理和抽帧时间戳要求；⑦ Plan B 新增 B1.5（独立 ASR + 纯视觉）；⑧ 合规：TTS 隐式标识需要容器格式；⑨ H5：v1 前后端同步下线，删除「流式回复」项（当前为非流式），统一文件大小上限；⑩ 待决策事项勾选 3 项；⑪ 第 6 节开发约束同步更新 `getAI()` 的新位置 |
 | 2026-11-05 | v2.2 | Phase 0.1 进度：PR 1–3 代码完成，在第 4.2 节勾选。说明：① 抽象层位于 `server/llm/`，配置说明见 `server/llm/config.ts` 文件头；② 行为变化（有意为之）：Pass 1 / Pass 2 新增临时性错误重试（2 次，3s 起指数退避，与 Pass 1.5 原有策略一致），Pass 1.5 改为读取 `GEMINI_VIDEO_MODEL` 并走降级链，JSON 解析失败至少重试 1 次，chat 的 token 用量写入 `meta.cost`；③ 暂不变更：`GEMINI_*` 错误码和日志事件名（前端映射和报告模板依赖它们），统一放到 PR 5 |
+| 2026-11-06 | v2.3 | Phase 0.1 进度：PR 4 完成。说明：① `analysis_jobs` 新增 `provider`（存视频托管实现名，如 `gemini_files`）和 `file_ref`，启动时幂等迁移并回填 56 条历史记录，`gemini_file_name` 列保留但新任务不再写入，切回旧代码仍可用；② 视频时长：上传时用 ffprobe 探测并写入 `video_duration`，探测失败则在任务开始时补测，因此片段截断逻辑首次真正生效；**部署环境必须安装 ffmpeg（含 ffprobe），路径可用 `FFPROBE_PATH` 覆盖，缺失时仅告警、时长留空**；③ 新增错误码 `QUOTA_EXHAUSTED`：模型服务商账户额度耗尽（如 402）不再被当作限流重试，也不会降级到其他模型，直接失败，对话接口返回 `retryable: false`，前端映射为「分析服务暂时不可用，请联系管理员」；④ `PASS2_START` 日志里的模型名改为 Pass 2 自己配置的首选模型（此前显示的是 Pass 1 的模型）；⑤ 新增测试 5 个，`npm test` 共 27 个（涵盖迁移、ffprobe 封装、402 分类）。**注意**：`better-sqlite3` 是原生模块，本机沙箱 Node 25 与后端实际使用的 Node 22 不一致，数据库相关测试需在 Node 22 下运行 |
+| 2026-11-06 | v2.4 | 补入评测结论（详见 [docs/eval/2026-11-06-gemini-video-model-comparison.md](../eval/2026-11-06-gemini-video-model-comparison.md)，单视频冒烟 A/B，不是完整回归）：① 同一段反手拉球视频，`gemini-3.1-pro-preview` 与 `gemini-4-argon` 判对，`gemini-3.8-flash` 误判为正手拉球，说明 Pass 1.5 的分类对模型很敏感，评测集必须覆盖正反手；② `gemini-4-argon` 质量最好且模型耗时约为基线的 0.63×，是更优候选，但样本太少，**暂不更换默认模型**，三个视频环节可通过 `LLM_VIDEO_PASS{1,15,2}_MODELS` 独立切换；③ 视频上传约占端到端耗时的 70–80%（海外链路），与模型无关，国内部署用 OSS + 境内网络预计会明显改善，应作为 Phase 2 的重点验证指标 |
+| 2026-11-06 | v2.5 | Phase 0.1 进度：PR 5 完成，**M2（解耦完成）达标**：除 `server/llm/gemini/` 外，业务代码中已无 `@google/genai` 引用和硬编码模型名。说明：① 后端删除 `server/routes/v1.ts` 并取消 `/api/v1` 挂载（旧的聊天、TTS、图片生成接口全部下线，访问返回 404），同时删除已无人使用的 `server/llm/retry.ts`（PR 1 时迁出的旧 `withRetry`，重试现已统一在抽象层）；② 前端 `client/geminiService.ts` 删除 `getAIResponse`、`generateActionImage`、TTS 降级到 v1 的路径，以及仅供 v1 使用的 `UNIFIED_COACH_INSTRUCTION`（v2 的 system prompt 在服务端），`App.tsx` 同步清理无用 import；③ 视频分析错误码中立化：`GEMINI_UPLOAD_FAILED`→`VIDEO_UPLOAD_FAILED`、`GEMINI_PROCESSING_FAILED`→`VIDEO_PROCESSING_FAILED`、`GEMINI_MODEL_UNAVAILABLE`→`MODEL_UNAVAILABLE`，其余 `LLMError` 的 `CODE: 细节` 原样透传；前端 `ANALYSIS_ERROR_MAP` 同时保留旧码映射，历史失败任务仍能显示友好提示，并新增 `RATE_LIMITED` / `UPSTREAM_UNAVAILABLE` 的提示；④ 日志事件名中立化：`GEMINI_UPLOAD_START/SUCCESS/FAILED`→`VIDEO_UPLOAD_START/SUCCESS/FAILED`、`GEMINI_PROCESSING_POLL/FAILED`→`VIDEO_PROCESSING_POLL/FAILED`、`GEMINI_ACTIVE`→`VIDEO_READY`；**2026-11-06 之前的历史日志仍是旧名**；⑤ 同步修改 `docs/video-analysis-report-template.md` 和 `.agents/rules/video-analysis-report.md`（事件名、章节标题、新旧名对照表，二者均新增变更记录），`CLAUDE.md` 路由表删除 v1 一行；⑥ **未修改**的历史设计文档（`docs/solutions/*`、`docs/coding_plan/*`、`docs/arch/Topstar_Hardening_Tech_Spec_v1.md`、`docs/02_Technical_Solution.md`）仍提到 `/api/v1` 和 `GEMINI_*`，它们是当时的设计快照，不随代码更新；⑦ 验证：前后端类型检查通过，27 个单元测试通过，真实调用确认 `/api/v1/*` 返回 404、`/api/v2/chat` 与 `/api/v2/tts` 正常（TTS 首次用真实接口验证）。**尚未验证**：用真实视频跑一次完整分析，确认新的日志事件名和 `video_duration` 写入 |
+| 2026-11-06 | v2.6 | 修复两个运行中发现的小问题（均为原有问题，不是迁移引入）：① **中文文件名乱码**：multer 把 UTF-8 的 multipart 文件名按 latin1 读取，`analysis_jobs.video_filename` 存成 `é©¬è¯å½¤` 一类乱码。新增 `server/utils/filename.ts`（`fixMultipartFilename`，只还原「确认是 latin1 误读的 UTF-8」，真正的 latin1 名字、纯 ASCII、已正确的名字都不改，幂等），上传时还原；并在启动时用 `repairFilenameEncoding` 一次性修复历史记录，已修复 43 条，逐条与修复前的备份比对无不一致、无 U+FFFD 残留。② **任务排队延迟**：入队后要等下一个 10 秒轮询（实测排队 7.5s）。现在 `enqueueAnalysisJob` 会立即唤醒 Worker（`triggerAnalysisPoll`，在 `setImmediate` 中执行，不拖慢上传响应），处理完一个任务后也立刻再扫描以连续消化积压；10 秒轮询保留作兜底；`ANALYSIS_WORKER_ENABLED=false` 时仍然不触发。实测从创建到开始处理 3ms。③ 新增测试 6 个，`npm test` 共 33 个。④ 勘误：此前我把视频 `大盼盼2.MOV` 误认成「大眼睛2」（乱码的不可见控制字符在显示时丢失所致），已更正，仓库文档中没有这个误称。⑤ 已确认的金标准（项目负责人，2026-11-06，作为评测集种子）：`大盼盼2.MOV`=反手拉球 `bh_loop`；`dppbl.MOV`=反手拉球 `bh_loop`；`马诗彤-b.MOV`=反手拨球 `bh_drive`（argon 判对，该视频无教练语音，走纯视觉判定） |

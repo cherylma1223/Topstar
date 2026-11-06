@@ -46,7 +46,7 @@ grep -n "<jobId>" server/video_analysis.log
 | 有效片段 | `{N}`段，共`{X}`秒 |
 | 最终结果 | ✅ 成功 / ❌ 失败 |
 
-### ① 上传 Gemini Files API
+### ① 视频上传（托管存储）
 
 | 阶段 | 耗时 | 详情 |
 |------|------|------|
@@ -167,12 +167,26 @@ Pass 2 动作诊断        ███████████                   {
 
 | 区间 | 起点 Stage | 终点 Stage |
 |------|-----------|-----------|
-| 上传 | GEMINI_UPLOAD_START | GEMINI_UPLOAD_SUCCESS |
-| 轮询至 ACTIVE | GEMINI_UPLOAD_SUCCESS | GEMINI_ACTIVE |
+| 上传 | VIDEO_UPLOAD_START | VIDEO_UPLOAD_SUCCESS |
+| 轮询至 ready | VIDEO_UPLOAD_SUCCESS | VIDEO_READY |
 | Pass 1 | PASS1_START | PASS1_VALIDATED |
 | Pass 1.5 | PASS1.5_START | PASS1.5_COMPLETE |
 | Pass 2 | PASS2_START | PASS2_OUTPUT |
 | 其他 | PASS2_OUTPUT | JOB_SUCCESS |
+
+> [!NOTE]
+> **日志事件名兼容（2026-11-06 起）**：视频上传相关的事件名已去掉厂商前缀。**2026-11-06 之前的历史日志**仍是旧名，分析旧任务时按下表对照：
+>
+> | 旧名（历史日志） | 新名 |
+> |---|---|
+> | `GEMINI_UPLOAD_START` | `VIDEO_UPLOAD_START` |
+> | `GEMINI_UPLOAD_SUCCESS` | `VIDEO_UPLOAD_SUCCESS` |
+> | `GEMINI_PROCESSING_POLL` | `VIDEO_PROCESSING_POLL` |
+> | `GEMINI_ACTIVE` | `VIDEO_READY` |
+> | `GEMINI_UPLOAD_FAILED` | `VIDEO_UPLOAD_FAILED` |
+> | `GEMINI_PROCESSING_FAILED` | `VIDEO_PROCESSING_FAILED` |
+>
+> 另外，`PASS1_START` / `PASS1.5_START` / `PASS2_START` 里的模型名是各环节配置的**首选**模型；**实际命中的模型以对应的 `*_OUTPUT` / `PASS1.5_COMPLETE` 日志为准**（发生降级时两者可能不同）。
 
 ---
 
@@ -205,7 +219,7 @@ Pass 2 动作诊断        ███████████                   {
 | 有效片段 | 1段，共53秒 |
 | 最终结果 | ✅ 成功 |
 
-### ① 上传 Gemini Files API
+### ① 视频上传（托管存储）
 
 | 阶段 | 耗时 | 详情 |
 |------|------|------|
@@ -356,3 +370,11 @@ grep -n "JOB_START\|JOB_FAILED\|JOB_SUCCESS" server/video_analysis.log | tail -5
 # 3. 若失败，定位失败 Stage
 grep "FAILED\|ERROR" server/video_analysis.log | tail -10
 ```
+
+---
+
+## 变更记录
+
+| 日期 | 说明 |
+|---|---|
+| 2026-11-06 | 视频上传相关日志事件名去掉 `GEMINI_` 前缀（改为 `VIDEO_UPLOAD_*` / `VIDEO_PROCESSING_*` / `VIDEO_READY`），新增旧名对照表；章节标题「上传 Gemini Files API」改为「视频上传（托管存储）」。随国产化迁移计划 PR 5 一起修改 |

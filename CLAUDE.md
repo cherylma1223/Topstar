@@ -32,7 +32,6 @@ cd server && npm run bootstrap-scores   # 初始化质量评分
 
 | 路由前缀 | 文件 | 用途 |
 |---------|------|------|
-| `/api/v1` | `server/routes/v1.ts` | 旧版 API：chat、TTS、图片生成 |
 | `/api/v2` | `server/routes/v2.ts` | 新版 API：编排式 chat、TTS 分段、教程推荐、视频分析 Job CRUD |
 
 ### 核心链路：对话编排 (handleChatEvent)
