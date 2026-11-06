@@ -22,17 +22,24 @@ docs/eval/
 |---|---|---|
 | 2026-11-06 | [Gemini 视频模型测评](2026-11-06-gemini-video-model-comparison.md) | `3.1-pro` / `4-argon` / `3.8-flash` 单视频 A/B |
 
-## 待建设
+## 评测集与评测脚本（已搭建）
 
-最小回归测试集尚未搭建，规划结构：
+评测集、标注表和批量评测脚本已经搭好（迁移计划 v2 的 PR 6），使用说明见 **[eval/README.md](../../eval/README.md)**。
 
-```
-eval/
-  videos/      # 视频样本（覆盖不同动作、机位、光照、无效片段）
-  labels/      # 人工标注：片段边界、动作 ID、已知问题点
-  baseline/    # 冻结的 golden 输出（含模型版本）
-  run.ts       # 批量执行、结果收集、与 baseline diff
-  report.md    # 自动生成的对比报告
-```
+两处目录的分工：
+
+| 目录 | 内容 |
+|---|---|
+| `docs/eval/`（本目录） | **人写的**测评报告和分析（单次对比、结论、局限性） |
+| `eval/`（仓库根目录） | **脚本生成的**数据：标注表 `labels/`、视频 `videos/`（不入库）、每次评测的 `runs/<日期-标签>/results.json` + `report.md` |
+
+`eval/runs/` 里的报告是脚本自动生成的，需要写成结论性文章时，再在本目录新建 `YYYY-MM-DD-<topic>.md` 引用它们。
 
 指标与门槛参见 `2026-11-06-gemini-video-model-comparison.md` 附录 A。
+
+## 变更记录
+
+| 日期 | 说明 |
+|---|---|
+| 2026-11-06 | 初版：目录约定、已有记录 |
+| 2026-11-06 | 「待建设」改为「评测集与评测脚本（已搭建）」：新增仓库根目录 `eval/`（标注表、视频、评测结果）和 `server/eval/`（评测脚本），并说明两处目录的分工；原来规划的 `eval/baseline/`、`run.ts` 由 `eval/runs/` 和 `npm run eval` 取代 |

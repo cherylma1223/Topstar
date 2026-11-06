@@ -378,3 +378,4 @@ grep "FAILED\|ERROR" server/video_analysis.log | tail -10
 | 日期 | 说明 |
 |---|---|
 | 2026-11-06 | 视频上传相关日志事件名去掉 `GEMINI_` 前缀（改为 `VIDEO_UPLOAD_*` / `VIDEO_PROCESSING_*` / `VIDEO_READY`），新增旧名对照表；章节标题「上传 Gemini Files API」改为「视频上传（托管存储）」。随国产化迁移计划 PR 5 一起修改 |
+| 2026-11-06 | 上传遇到临时性网络错误会重试（新增 WARN 事件 `VIDEO_UPLOAD_RETRY`，出现它说明上传抖动过但最终是否成功要看后续的 `VIDEO_UPLOAD_SUCCESS` / `VIDEO_UPLOAD_FAILED`）。另外各环节的原始输出、命中的模型、耗时和 token 用量现在也存在数据库 `analysis_jobs.trace`，不必再只靠日志取数。随国产化迁移计划 PR 6 一起修改 |
