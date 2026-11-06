@@ -30,6 +30,15 @@ export function classifyGeminiError(err: unknown): LLMErrorCode {
   if (modelUnavailable || status === 404 || msg.includes('"code":404') || msg.includes('code: 404')) {
     return 'MODEL_UNAVAILABLE';
   }
+  // 账户额度耗尽（如 402 "prepayment credits are depleted"）：必须先于 RATE_LIMITED 判断，
+  // 因为它的 status 同样是 RESOURCE_EXHAUSTED，但重试和换模型都没有意义
+  if (
+    status === 402 || msg.includes('"code":402') ||
+    msg.toLowerCase().includes('prepayment credits are depleted') ||
+    msg.toLowerCase().includes('billing account')
+  ) {
+    return 'QUOTA_EXHAUSTED';
+  }
   if (status === 429 || msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED')) return 'RATE_LIMITED';
   if (
     status === 500 || status === 502 || status === 503 || status === 504 ||

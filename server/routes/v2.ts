@@ -12,6 +12,8 @@ import { handleChatEvent, type ChatRequest } from '../orchestrator/handleChatEve
 import { recommendTutorials } from '../tutorials/recommendTutorials';
 import { updateTutorialStatus, getTutorial } from '../tutorials/loader';
 import { tts, isCapabilityAvailable, getPrimaryModel } from '../llm';
+import { probeVideoDuration } from '../video/probe';
+import { fixMultipartFilename } from '../utils/filename';
 import db from '../db';
 import { enqueueAnalysisJob } from '../jobs/queue';
 
@@ -453,17 +455,21 @@ router.post('/analysis/jobs', (req, res) => {
 
     const analysisType = (req.body?.analysis_type === 'match_strategy') ? 'match_strategy' : 'technique';
 
+    // 探测视频时长（秒）；失败时留空，处理任务时会再尝试一次
+    const videoDuration = (await probeVideoDuration(newPath)) ?? null;
+
     // 写入 DB
     db.prepare(`
       INSERT INTO analysis_jobs
-        (id, status, analysis_type, video_path, video_filename, video_size, mime_type, created_at)
-      VALUES (?, 'queued', ?, ?, ?, ?, ?, ?)
+        (id, status, analysis_type, video_path, video_filename, video_size, video_duration, mime_type, created_at)
+      VALUES (?, 'queued', ?, ?, ?, ?, ?, ?, ?)
     `).run(
       jobId,
       analysisType,
       newPath,
-      file.originalname,
+      fixMultipartFilename(file.originalname), // multer 把 UTF-8 文件名按 latin1 读成乱码，这里还原
       file.size,
+      videoDuration,
       file.mimetype,
       new Date().toISOString()
     );
@@ -471,7 +477,7 @@ router.post('/analysis/jobs', (req, res) => {
     // 通知队列（MVP: no-op）
     await enqueueAnalysisJob(jobId);
 
-    console.log(`[V2] Created analysis job: ${jobId} (${analysisType}, ${file.mimetype}, ${Math.round(file.size / 1024)}KB)`);
+    console.log(`[V2] Created analysis job: ${jobId} (${analysisType}, ${file.mimetype}, ${Math.round(file.size / 1024)}KB, ${videoDuration ?? '?'}s)`);
 
     res.json({ success: true, job_id: jobId, status: 'queued' });
   });

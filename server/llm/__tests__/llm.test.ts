@@ -95,6 +95,14 @@ test('INVALID_REQUEST 不重试也不降级', async () => {
   assert.deepEqual(fake.calls, ['a']);
 });
 
+test('QUOTA_EXHAUSTED（402 额度耗尽）不重试也不降级，立即失败', async () => {
+  const fake = new FakeProvider({ a: [err('QUOTA_EXHAUSTED')], b: [{ text: 'ok' }] });
+  __setProviderForTest('gemini', fake);
+  useModels('VIDEO_PASS1', ['a', 'b'], 3);
+  await assert.rejects(generate(req()), (e: unknown) => e instanceof LLMError && e.code === 'QUOTA_EXHAUSTED' && !e.retryable);
+  assert.deepEqual(fake.calls, ['a']);
+});
+
 // ─── 结构化输出 ──────────────────────────────────────────────────
 
 const SCHEMA = {
@@ -162,6 +170,11 @@ test('classifyGeminiError 覆盖历史失败样本', () => {
   const notFound = '{"error":{"code":404,"message":"models/gemini-2.5-pro-preview-05-06 is not found for API version v1beta, or is not supported for generateContent.","status":"NOT_FOUND"}}';
   assert.equal(classifyGeminiError(new Error(notFound)), 'MODEL_UNAVAILABLE');
   assert.equal(classifyGeminiError(new Error('{"error":{"code":503,"message":"The service is currently unavailable.","status":"UNAVAILABLE"}}')), 'UPSTREAM_UNAVAILABLE');
+  // 真实线上样本：额度耗尽的 status 同样是 RESOURCE_EXHAUSTED，必须和 429 限流区分开
+  const quota = '{"error":{"code":402,"message":"Your prepayment credits are depleted. Please go to AI Studio at https://ai.studio/projects to manage your project and billing.","status":"RESOURCE_EXHAUSTED"}}';
+  assert.equal(classifyGeminiError(new Error(quota)), 'QUOTA_EXHAUSTED');
+  assert.equal(classifyGeminiError(Object.assign(new Error('x'), { status: 402 })), 'QUOTA_EXHAUSTED');
+  assert.equal(classifyGeminiError(new Error('{"error":{"code":429,"message":"rate","status":"RESOURCE_EXHAUSTED"}}')), 'RATE_LIMITED');
   assert.equal(classifyGeminiError(new Error('{"error":{"code":400,"message":"Request contains an invalid argument.","status":"INVALID_ARGUMENT"}}')), 'INVALID_REQUEST');
   assert.equal(classifyGeminiError(new Error('fetch failed')), 'UPSTREAM_UNAVAILABLE');
   assert.equal(classifyGeminiError(Object.assign(new Error('quota'), { status: 429 })), 'RATE_LIMITED');

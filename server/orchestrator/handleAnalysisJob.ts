@@ -7,7 +7,8 @@
  * 参考：Phase 2-A 设计文档 §5.3 / Codex v6 §20
  */
 import db from '../db';
-import { generate, getVideoStorage, isLLMError, errorMessage, type JSONSchema, type VideoRef } from '../llm';
+import { generate, getVideoStorage, getPrimaryModel, isLLMError, errorMessage, type JSONSchema, type VideoRef } from '../llm';
+import { probeVideoDuration } from '../video/probe';
 import { recommendTutorials } from '../tutorials/recommendTutorials';
 import { classifyTechnique } from '../videoAnalysis/techniqueClassifier';
 import { evaluateClassification, DecisionAction } from '../videoAnalysis/recognitionDecision';
@@ -40,16 +41,17 @@ export interface AnalysisReportPayload {
 }
 
 // ─── 错误码 ───────────────────────────────────────────────────────
-// 注意：GEMINI_* 错误码会落库并由前端 ANALYSIS_ERROR_MAP 映射为提示文案，
-// 暂时保持不变；PR 5 统一改为中立错误码（前端兼容旧码）。
+// 错误码会落库（analysis_jobs.error），并由前端 ANALYSIS_ERROR_MAP 映射为提示文案。
+// 与具体模型厂商无关：LLMError 的 message 本身就是 `CODE: 细节`（如 MODEL_UNAVAILABLE、
+// QUOTA_EXHAUSTED），原样透传；这里只定义视频分析流程自己产生的错误码。
+// 2026-11-06 起不再使用 GEMINI_* 前缀；历史任务里的旧码由前端兼容映射。
 
 const ERROR_CODES = {
-  NO_VALID_SEGMENTS:        'NO_VALID_SEGMENTS',
-  GEMINI_UPLOAD_FAILED:     'GEMINI_UPLOAD_FAILED',
-  GEMINI_MODEL_UNAVAILABLE: 'GEMINI_MODEL_UNAVAILABLE',
-  GEMINI_PROCESSING_FAILED: 'GEMINI_PROCESSING_FAILED',
-  REPORT_PARSE_FAILED:      'REPORT_PARSE_FAILED',
-  TIMEOUT:                  'TIMEOUT',
+  NO_VALID_SEGMENTS:       'NO_VALID_SEGMENTS',
+  VIDEO_UPLOAD_FAILED:     'VIDEO_UPLOAD_FAILED',
+  VIDEO_PROCESSING_FAILED: 'VIDEO_PROCESSING_FAILED',
+  REPORT_PARSE_FAILED:     'REPORT_PARSE_FAILED',
+  TIMEOUT:                 'TIMEOUT',
 } as const;
 
 /** 模型名、降级链、重试策略见 server/llm/config.ts（video_pass1 / video_pass15 / video_pass2） */
@@ -209,14 +211,10 @@ const MATCH_SCHEMA: JSONSchema = {
  * @param stage 'pass1' | 'pass2'，用于 REPORT_PARSE_FAILED 的细分
  */
 function toAnalysisError(err: unknown, stage: 'pass1' | 'pass2'): Error {
-  if (isLLMError(err)) {
-    if (err.code === 'MODEL_UNAVAILABLE') {
-      return new Error(`${ERROR_CODES.GEMINI_MODEL_UNAVAILABLE}: ${err.message}`);
-    }
-    if (err.code === 'PARSE_FAILED' || err.code === 'EMPTY_RESPONSE') {
-      return new Error(`${ERROR_CODES.REPORT_PARSE_FAILED}:${stage}`);
-    }
+  if (isLLMError(err) && (err.code === 'PARSE_FAILED' || err.code === 'EMPTY_RESPONSE')) {
+    return new Error(`${ERROR_CODES.REPORT_PARSE_FAILED}:${stage}`);
   }
+  // 其余 LLMError（MODEL_UNAVAILABLE / QUOTA_EXHAUSTED / RATE_LIMITED …）message 已是 `CODE: 细节`
   return err instanceof Error ? err : new Error(errorMessage(err));
 }
 
@@ -404,12 +402,11 @@ async function uploadAndAnalyzeVideo(
   mimeType: string,
   analysisType: string,
   videoDurationSec?: number
-): Promise<{ payload: AnalysisReportPayload; fileRef: string; model: string }> {
+): Promise<{ payload: AnalysisReportPayload; storage: string; fileRef: string; model: string }> {
   const storage = getVideoStorage();
 
   // 1. 上传视频到托管存储（海外版：Gemini Files API；国内版：OSS）
-  //    日志事件名沿用 GEMINI_*，供视频分析报告模板解析；PR 5 统一更名
-  VideoAnalysisLogger.info(jobId, 'GEMINI_UPLOAD_START', `Uploading video to ${storage.name}`, {
+  VideoAnalysisLogger.info(jobId, 'VIDEO_UPLOAD_START', `Uploading video to ${storage.name}`, {
     videoPath,
     mimeType,
     analysisType,
@@ -420,25 +417,25 @@ async function uploadAndAnalyzeVideo(
   try {
     video = await storage.upload(videoPath, mimeType);
   } catch (err: any) {
-    const errMsg = ERROR_CODES.GEMINI_UPLOAD_FAILED + ': ' + err.message;
-    VideoAnalysisLogger.error(jobId, 'GEMINI_UPLOAD_FAILED', errMsg);
+    const errMsg = ERROR_CODES.VIDEO_UPLOAD_FAILED + ': ' + err.message;
+    VideoAnalysisLogger.error(jobId, 'VIDEO_UPLOAD_FAILED', errMsg);
     throw new Error(errMsg);
   }
 
   const fileRef = video.fileRef;
-  VideoAnalysisLogger.info(jobId, 'GEMINI_UPLOAD_SUCCESS', `Successfully uploaded. File ref: ${fileRef}. Waiting for ready state.`);
+  VideoAnalysisLogger.info(jobId, 'VIDEO_UPLOAD_SUCCESS', `Successfully uploaded. File ref: ${fileRef}. Waiting for ready state.`);
 
   // 2. 等待托管侧处理完毕 (processing → ready)
   try {
     video = await storage.waitReady(video, state => {
-      VideoAnalysisLogger.info(jobId, 'GEMINI_PROCESSING_POLL', `File state: ${state}`);
+      VideoAnalysisLogger.info(jobId, 'VIDEO_PROCESSING_POLL', `File state: ${state}`);
     });
   } catch (err: any) {
-    VideoAnalysisLogger.error(jobId, 'GEMINI_PROCESSING_FAILED', `Video processing failed: ${err.message}`);
-    throw new Error(ERROR_CODES.GEMINI_PROCESSING_FAILED);
+    VideoAnalysisLogger.error(jobId, 'VIDEO_PROCESSING_FAILED', `Video processing failed: ${err.message}`);
+    throw new Error(ERROR_CODES.VIDEO_PROCESSING_FAILED);
   }
 
-  VideoAnalysisLogger.info(jobId, 'GEMINI_ACTIVE', `Video is active and ready for analysis`, { uri: video.uri });
+  VideoAnalysisLogger.info(jobId, 'VIDEO_READY', `Video is active and ready for analysis`, { uri: video.uri });
 
   try {
     // ───── Pass 1：有效片段识别 ─────────────────────────────────
@@ -536,7 +533,7 @@ async function uploadAndAnalyzeVideo(
       VideoAnalysisLogger.info(jobId, 'PASS2_START', 'Starting Pass 2 diagnosis', {
         analysisType,
         fps: VIDEO_FPS_PASS2,
-        model: finalModel,
+        model: getPrimaryModel('video_pass2') ?? finalModel, // 首选模型；实际命中的模型见 PASS2_OUTPUT
         prompt: pass2Prompt
       });
 
@@ -601,7 +598,7 @@ async function uploadAndAnalyzeVideo(
 
     const payload = wrapReportPayload(analysisType, finalPayload, validSegments, tutorialsMap);
     VideoAnalysisLogger.info(jobId, 'PAYLOAD_WRAPPED', 'Analysis report payload wrapped successfully', payload);
-    return { payload, fileRef, model: finalModel };
+    return { payload, storage: storage.name, fileRef, model: finalModel };
 
   } finally {
     // 清理托管存储中的视频文件
@@ -642,34 +639,46 @@ export async function processAnalysisJob(jobId: string): Promise<void> {
   }
 
   try {
+    // 上传时没探测到时长（或历史任务）则在这里补测一次，用于片段截断
+    let videoDuration = job.video_duration;
+    if (videoDuration == null) {
+      const probed = await probeVideoDuration(job.video_path);
+      if (probed !== undefined) {
+        videoDuration = probed;
+        db.prepare(`UPDATE analysis_jobs SET video_duration = ? WHERE id = ?`).run(probed, jobId);
+      }
+    }
+
     VideoAnalysisLogger.info(jobId, 'JOB_START', `Processing video analysis job (${job.analysis_type})`, {
       jobId: job.id,
       videoPath: job.video_path,
       mimeType: job.mime_type,
-      videoDuration: job.video_duration
+      videoDuration
     });
 
-    const { payload, fileRef, model } = await uploadAndAnalyzeVideo(
+    const { payload, storage, fileRef, model } = await uploadAndAnalyzeVideo(
       jobId,
       job.video_path,
       job.mime_type || 'video/mp4',
       job.analysis_type,
-      job.video_duration ?? undefined
+      videoDuration ?? undefined
     );
 
-    // 存储报告，标记完成
+    // 存储报告，标记完成（gemini_file_name 已废弃，改写 provider + file_ref）
     db.prepare(
       `UPDATE analysis_jobs
        SET status = 'done',
            report = ?,
            model = ?,
-           gemini_file_name = ?,
+           provider = ?,
+           file_ref = ?,
            completed_at = ?
        WHERE id = ?`
     ).run(
       JSON.stringify(payload),
       model,
-      fileRef, // PR 4 起改写入 provider + file_ref 字段
+      storage,
+      fileRef,
       new Date().toISOString(),
       jobId
     );

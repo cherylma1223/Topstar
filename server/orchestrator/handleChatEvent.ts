@@ -9,7 +9,7 @@ import { matchKnowledge, getKnowledgeSummary } from '../knowledge/matcher';
 import { getActionAliasMap } from '../knowledge/loader';
 import { recommendTutorials, type RecommendedTutorial } from '../tutorials/recommendTutorials';
 import { validateTemplate } from './templateValidator';
-import { generate } from '../llm';
+import { generate, isLLMError } from '../llm';
 
 // ==================
 // 类型定义
@@ -278,13 +278,19 @@ export async function handleChatEvent(req: ChatRequest): Promise<ChatResponse | 
       answerText = result.text || '';
       usage = result.usage;
     } catch (err: any) {
-      console.error(`[Orchestrator] LLM generation failed:`, err.message);
+      const quota = isLLMError(err) && err.code === 'QUOTA_EXHAUSTED';
+      console.error(
+        quota
+          ? `[Orchestrator] LLM 账户额度耗尽，请检查模型服务商账单: ${err.message}`
+          : `[Orchestrator] LLM generation failed:`,
+        quota ? '' : err.message
+      );
       return {
         success: false,
         error: {
           code: 'LLM_UNAVAILABLE',
           message: '模型服务暂时不可用，请稍后再试',
-          retryable: true,
+          retryable: !quota,
           request_id: requestId,
         },
       };

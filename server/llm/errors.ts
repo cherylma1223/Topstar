@@ -8,6 +8,7 @@
 export type LLMErrorCode =
   | 'MODEL_UNAVAILABLE'     // 模型不存在 / 不支持该方法（触发降级到下一个模型）
   | 'RATE_LIMITED'          // 429 限流（可重试）
+  | 'QUOTA_EXHAUSTED'       // 402 / 账户额度耗尽（不可重试，换模型也没用，需要充值）
   | 'UPSTREAM_UNAVAILABLE'  // 503 / 过载 / 网络失败（可重试）
   | 'INVALID_REQUEST'       // 400 参数错误（不可重试）
   | 'AUTH_FAILED'           // 401 / 403 凭证问题（不可重试）

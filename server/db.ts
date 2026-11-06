@@ -1,5 +1,6 @@
 import Database, { type Database as DatabaseType } from 'better-sqlite3';
 import path from 'path';
+import { migrateAnalysisJobs, repairFilenameEncoding } from './dbMigrations';
 
 const DB_PATH = path.join(__dirname, 'data', 'topstar.db');
 
@@ -51,13 +52,27 @@ db.exec(`
     report_schema_version TEXT DEFAULT 'v1',
     error                 TEXT,
     model                 TEXT,
-    gemini_file_name      TEXT,
+    gemini_file_name      TEXT,   -- 已废弃：仅保留历史数据，新任务写 provider + file_ref
+    provider              TEXT,   -- 视频托管实现名（gemini_files / 后续 aliyun_oss）
+    file_ref              TEXT,   -- 托管侧文件标识
     attempt_count         INTEGER DEFAULT 0,
     created_at            TEXT NOT NULL,
     started_at            TEXT,
     completed_at          TEXT
   );
 `);
+
+// 旧库补列并回填历史数据（幂等）
+const migration = migrateAnalysisJobs(db);
+if (migration.added.length > 0 || migration.backfilled > 0) {
+  console.log(`[DB] analysis_jobs migrated: added=[${migration.added.join(',')}] backfilled=${migration.backfilled}`);
+}
+
+// 修复历史上被误读为 latin1 的中文文件名（幂等）
+const repairedNames = repairFilenameEncoding(db);
+if (repairedNames > 0) {
+  console.log(`[DB] analysis_jobs.video_filename: repaired ${repairedNames} garbled filename(s)`);
+}
 
 console.log(`[DB] SQLite database ready at ${DB_PATH} (WAL mode)`);
 

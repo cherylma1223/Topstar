@@ -8,7 +8,7 @@ import ChatScreen from './components/ChatScreen.tsx';
 import ChatInput from './components/ChatInput.tsx';
 import SettingsScreen from './components/SettingsScreen.tsx';
 import AppearanceSettingsScreen from './components/AppearanceSettingsScreen.tsx';
-import { getAIResponseV2, UNIFIED_COACH_INSTRUCTION } from './geminiService.ts';
+import { getAIResponseV2 } from './geminiService.ts';
 
 interface HistoryEntry {
   id: string;

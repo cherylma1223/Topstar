@@ -6,79 +6,8 @@ import type { AnalysisReport } from './types.ts';
  * 所有 API Key 仅存在于服务端，前端不持有任何密钥
  */
 
-const API_BASE = '/api/v1/ai';
-
 const OFF_TOP_REPLY = "抱歉，我只能回答乒乓球相关的问题。您可以尝试上传您的训练或比赛视频，让我为您进行深度分析，也可以根据您的打法推荐器材。";
 
-export const UNIFIED_COACH_INSTRUCTION = `你是一名资深的乒乓球教练，同时也是专业的器材顾问。语气简练专业，充满洞察力。
-你的回答必须【极致精简】且【高度结构化】。严禁编造结构，严禁使用列表符号 - 或 *。
-
-【核心任务——意图识别与模板匹配】：
-你必须根据用户提问内容（而非当前所处的对话主题）判断问题类型，并严格使用对应的输出模板。规则如下：
-1. 用户咨询具体技术动作（如：怎么练拧拉、正手攻球要领、发球技术）→ 严格使用【技术动作输出模板】
-2. 用户咨询实战表现或战术（如：被长球顶住、处理不掉短球、比赛策略）→ 严格使用【战术策略输出模板】
-3. 用户咨询器材（如：D09C怎么样、推荐胶皮、底板搭配）→ 严格使用【器材咨询输出模板】
-4. 如果知识库中有相关文件内容，必须严格参考知识库内容回答，不要编造。
-5. 乒乓球无关内容直接回复："${OFF_TOP_REPLY}"
-
-===== 模板一：技术动作输出模板 =====
-第一行：一句核心总结。
-
-【动作要领】
-[参考知识库中的动作要领，分步描述]
-
-【常见问题】
-[描述技术上的核心痛点或误区]
-
-【训练建议】
-[给出具体、可执行的练习方法]
-
-【视频教程】
-请务必按照 [视频名称](URL) 的 Markdown 链接格式输出。
-
-【核心秘诀(VIP专属)】
-[务必包含知识库中的核心秘诀内容]
-
-===== 模板二：战术策略输出模板 =====
-第一行：一句核心总结。
-
-【存在问题/定性分析】
-[进行定性分析，如：节奏被压制、空间被挤压]
-
-【改进建议/实战策略】
-[给出具体的战术应对方案，如"不拉手、迎上去"]
-
-===== 模板三：器材咨询输出模板 =====
-如果用户咨询具体的器材（例如：蝴蝶D09C）：
-请严格参考知识库中的器材参数和搭配建议。
-
-【性能特点】
-[第一点特性描述，直接写文字]
-[第二点特性描述]
-
-【适合打法】[描述]
-【代表运动员】[姓名]
-【价格区间】[金额]
-
-如果用户寻求器材推荐，请分行主动询问：
-1) 您想咨询：底板、胶皮还是整套器材？
-2) 您的打法：例如横板两面反胶/直板快攻等？
-3) 您的预算：大致范围？
-
-推荐方案时（同样禁止使用符号）：
-【底板】[名称]（理由：...）
-【正手】[名称]
-【反手】[名称]
-
-【约束条件】：
-总字数控制在200字以内。
-严禁在每行开头使用"-"或"*"。
-确保主题（【...】）与下方内容紧凑。
-禁止多余的客套话。`;
-
-// 保留旧名称作为向后兼容的别名
-export const DEFAULT_COACH_INSTRUCTION = UNIFIED_COACH_INSTRUCTION;
-export const EQUIPMENT_ADVISOR_INSTRUCTION = UNIFIED_COACH_INSTRUCTION;
 
 /**
  * 通用的指数退避重试包装函数
@@ -169,34 +98,6 @@ export const getAIResponseV2 = async (
       references: [],
       tutorialVideos: []
     };
-  }
-};
-
-/**
- * AI 聊天 — 通过后端代理 V1 (遗留文本接口，做降级备份)
- */
-export const getAIResponse = async (prompt: string, history: { sender: string, content: string }[] = [], systemInstruction: string = DEFAULT_COACH_INSTRUCTION) => {
-  try {
-    const data = await withRetry(async () => {
-      const res = await fetch(`${API_BASE}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, history, systemInstruction }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(err.error || `HTTP ${res.status}`);
-      }
-      return res.json();
-    });
-
-    return data.content || "AI 助手暂时没有回应，请重试。";
-  } catch (error) {
-    console.error("Gemini Service Error:", error);
-    if (error instanceof TypeError && error.message.includes('fetch')) {
-      return "网络连接失败，请检查您的网络环境。";
-    }
-    return "AI 助手目前正忙（服务过载），请稍后重试。";
   }
 };
 
@@ -370,57 +271,6 @@ function buildReportSegments(report?: AnalysisReport, isFieldGuidance?: boolean)
   return segments.filter(segment => Boolean(segment.text));
 }
 
-async function fetchLegacySegmentAudio(text: string): Promise<TTSSegment['audio']> {
-  const data = await withRetry(async () => {
-    const res = await fetch(`${API_BASE}/tts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(err.error || `HTTP ${res.status}`);
-    }
-    return res.json();
-  }, 1, 300);
-
-  if (!data.audioData) {
-    throw new Error('No audio data in legacy response');
-  }
-
-  return {
-    mime_type: 'audio/pcm',
-    sample_rate: 24000,
-    data: data.audioData,
-  };
-}
-
-async function fetchSpeechPlanLegacy(request: TTSRequest): Promise<TTSResponse | null> {
-  const rawSegments = request.contentType === 'report'
-    ? buildReportSegments(request.report, request.isFieldGuidance)
-    : buildTextSegments(request.text || '');
-
-  if (rawSegments.length === 0) return null;
-
-  const segments = await Promise.all(
-    rawSegments.map(async (segment) => ({
-      ...segment,
-      audio: await fetchLegacySegmentAudio(segment.text),
-    }))
-  );
-
-  return {
-    success: true,
-    request_id: `legacy-${Date.now()}`,
-    cache_hit: false,
-    voice: request.voice || 'Kore',
-    segments,
-    metrics: {
-      provider_model: 'gemini-2.5-flash-preview-tts',
-    },
-  };
-}
-
 export function getSharedAudioContext(): AudioContext {
   if (!sharedAudioContext) {
     sharedAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -469,9 +319,6 @@ async function fetchSpeechPlan(request: TTSRequest): Promise<TTSResponse | null>
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({ error: res.statusText }));
-          if (res.status === 404) {
-            throw new Error('TTS_V2_NOT_FOUND');
-          }
           throw new Error(err.error?.message || err.error || `HTTP ${res.status}`);
         }
         return res.json();
@@ -479,16 +326,6 @@ async function fetchSpeechPlan(request: TTSRequest): Promise<TTSResponse | null>
 
       return data;
     } catch (error) {
-      if (error instanceof Error && error.message === 'TTS_V2_NOT_FOUND') {
-        try {
-          return await fetchSpeechPlanLegacy(request);
-        } catch (legacyError) {
-          console.error('TTS API Error Details:', legacyError);
-          speechPlanCache.delete(cacheKey);
-          return null;
-        }
-      }
-
       console.error('TTS API Error Details:', error);
       speechPlanCache.delete(cacheKey);
       return null;
@@ -545,31 +382,6 @@ export const generateSpeech = async (text: string) => {
 };
 
 /**
- * 根据技术动作描述生成背景图片 — 通过后端代理
- */
-export const generateActionImage = async (actionDescription: string) => {
-  try {
-    const data = await withRetry(async () => {
-      const res = await fetch(`${API_BASE}/image`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ actionDescription }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(err.error || `HTTP ${res.status}`);
-      }
-      return res.json();
-    });
-
-    return data.imageData || null;
-  } catch (error) {
-    console.error("Image Generation Error:", error);
-    return null;
-  }
-};
-
-/**
  * 音频解码与处理工具函数
  */
 export function decodeBase64(base64: string): Uint8Array {
@@ -607,13 +419,21 @@ export async function decodeAudioData(
 const ANALYSIS_ERROR_MAP: Record<string, string> = {
   NO_VALID_SEGMENTS:            '未识别到有效的乒乓球动作片段，请上传包含击球练习或比赛回合的视频',
   'NO_VALID_SEGMENTS:not_table_tennis': '视频内容似乎不是乒乓球相关，请重新上传',
-  GEMINI_UPLOAD_FAILED:         '视频上传失败，请检查网络后重试',
-  GEMINI_MODEL_UNAVAILABLE:     '当前视频分析模型不可用，请稍后重试或联系管理员检查服务端模型配置',
-  GEMINI_PROCESSING_FAILED:     '视频处理失败，请稍后重试',
+  VIDEO_UPLOAD_FAILED:          '视频上传失败，请检查网络后重试',
+  VIDEO_PROCESSING_FAILED:      '视频处理失败，请稍后重试',
+  MODEL_UNAVAILABLE:            '当前视频分析模型不可用，请稍后重试或联系管理员检查服务端模型配置',
+  RATE_LIMITED:                 '分析服务繁忙，请稍后重试',
+  UPSTREAM_UNAVAILABLE:         '分析服务繁忙，请稍后重试',
+  QUOTA_EXHAUSTED:              '分析服务暂时不可用，请联系管理员',
   REPORT_PARSE_FAILED:          '分析结果解析失败，请重试',
   'REPORT_PARSE_FAILED:pass1':  '片段识别失败，请重试',
   'REPORT_PARSE_FAILED:pass2':  '分析报告生成失败，请重试',
   TIMEOUT:                      '分析超时，请上传更短的视频（建议 ≤ 60 秒）后重试',
+
+  // 2026-11-06 前的历史任务（analysis_jobs.error）仍带有旧的 GEMINI_* 错误码，保持兼容
+  GEMINI_UPLOAD_FAILED:         '视频上传失败，请检查网络后重试',
+  GEMINI_MODEL_UNAVAILABLE:     '当前视频分析模型不可用，请稍后重试或联系管理员检查服务端模型配置',
+  GEMINI_PROCESSING_FAILED:     '视频处理失败，请稍后重试',
 };
 
 export interface AnalysisJobStatus {

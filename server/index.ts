@@ -5,7 +5,6 @@ import morgan from 'morgan';
 import 'dotenv/config';
 
 import { loadKnowledgeBase } from './knowledge/loader';
-import v1Router from './routes/v1';
 import v2Router from './routes/v2';
 import { startLinkHealthCheck } from './jobs/linkHealthCheck';
 import { startTutorialSyncJob } from './jobs/tutorialSyncJob';
@@ -29,7 +28,6 @@ app.use(express.json({ limit: '10mb' }));
 app.use(morgan('dev'));
 
 // 挂载路由
-app.use('/api/v1', v1Router);
 app.use('/api/v2', v2Router);
 
 // 兼容旧的健康检查路径
