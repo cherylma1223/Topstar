@@ -9,6 +9,7 @@ import { matchKnowledge, getKnowledgeSummary } from '../knowledge/matcher';
 import { getActionAliasMap } from '../knowledge/loader';
 import { recommendTutorials, type RecommendedTutorial } from '../tutorials/recommendTutorials';
 import { validateTemplate } from './templateValidator';
+import { LOCKED_VIP_BLOCK, sanitizeAnswerTextForNonVip, stripVipSectionsFromKnowledge } from './vipFilter';
 import { generate, isLLMError } from '../llm';
 
 // ==================
@@ -18,8 +19,12 @@ import { generate, isLLMError } from '../llm';
 export interface ChatRequest {
   message: string;
   history?: Array<{ sender: string; content: string }>;
-  prefs?: Record<string, any>;
   event?: string;
+  /**
+   * 是否 VIP。**只能由服务端设置**（见 server/auth/vip.ts），不能取自请求体：
+   * 客户端传来的任何 prefs / is_vip 字段都会被忽略。默认 false。
+   */
+  isVip?: boolean;
 }
 
 export interface ChatResponse {
@@ -81,79 +86,6 @@ const TEMPLATE_PROMPTS: Partial<Record<IntentType, string>> = {
 重要规则：不要在回复中编造任何视频链接或URL。`,
 };
 
-const VIP_SECTION_REGEX = /(?:^|\n)(?:###\s*)?【(?:核心秘诀|VIP专属)[^】]*】[\s\S]*?(?=(?:\n(?:###\s*)?【|\n【|$))/g;
-const VIP_TITLE_REGEX = /【(?:核心秘诀|VIP专属)[^】]*】/;
-const VIP_LEAK_LINE_REGEX = /(核心秘诀|VIP专属|会员专属|二次点火|金牌教练|喷射感|猛压拍肩|食指.*(?:拍肩|发力|加速))/i;
-const LOCKED_VIP_BLOCK = '【核心秘诀】\n[LOCKED_VIP_CONTENT]';
-
-function stripVipSectionsFromKnowledge(content: string): { content: string; hasVipSecret: boolean } {
-  const hasVipSecret = VIP_SECTION_REGEX.test(content);
-  VIP_SECTION_REGEX.lastIndex = 0;
-
-  if (!hasVipSecret) {
-    return { content, hasVipSecret: false };
-  }
-
-  return {
-    content: content.replace(VIP_SECTION_REGEX, '').trim(),
-    hasVipSecret: true,
-  };
-}
-
-function sanitizeAnswerTextForNonVip(answerText: string): { text: string; removedVip: boolean } {
-  let removedVip = false;
-
-  let sanitized = answerText.replace(VIP_SECTION_REGEX, () => {
-    removedVip = true;
-    return '';
-  }).trim();
-  VIP_SECTION_REGEX.lastIndex = 0;
-
-  const lines = sanitized.split('\n');
-  const keptLines: string[] = [];
-  let currentSection = '';
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-
-    if (!line) {
-      keptLines.push(rawLine);
-      continue;
-    }
-
-    const headerMatch = line.match(/【([^】]+)】/);
-    if (headerMatch) {
-      currentSection = headerMatch[1];
-      if (VIP_TITLE_REGEX.test(line)) {
-        removedVip = true;
-        continue;
-      }
-      const headerOnly = rawLine.match(/【[^】]+】/)?.[0] || rawLine;
-      const restOfHeader = line.replace(headerOnly, '').trim();
-      if (restOfHeader && VIP_LEAK_LINE_REGEX.test(restOfHeader)) {
-        removedVip = true;
-        keptLines.push(headerOnly);
-        continue;
-      }
-      keptLines.push(rawLine);
-      continue;
-    }
-
-    if (currentSection && !VIP_TITLE_REGEX.test(currentSection) && VIP_LEAK_LINE_REGEX.test(line)) {
-      removedVip = true;
-      continue;
-    }
-
-    keptLines.push(rawLine);
-  }
-
-  sanitized = keptLines.join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-
-  return { text: sanitized, removedVip };
-}
-
 // ==================
 // 编排主函数
 // ==================
@@ -184,7 +116,7 @@ export async function handleChatEvent(req: ChatRequest): Promise<ChatResponse | 
     const knowledgeHits = matchKnowledge(req.message);
     let knowledgeContext = '';
     let hasVipSecret = false;
-    const isVip = req.prefs?.is_vip === true;
+    const isVip = req.isVip === true; // 由服务端判定，不信任客户端传入的任何字段
 
     if (knowledgeHits.length > 0) {
       knowledgeContext = '\n\n以下是你必须参考的乒乓球专业知识库（与本次提问相关的内容）：\n\n';

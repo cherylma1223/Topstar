@@ -14,6 +14,7 @@ import { updateTutorialStatus, getTutorial } from '../tutorials/loader';
 import { tts, isCapabilityAvailable, getPrimaryModel } from '../llm';
 import { probeVideoDuration } from '../video/probe';
 import { fixMultipartFilename } from '../utils/filename';
+import { resolveIsVip } from '../auth/vip';
 import db from '../db';
 import { enqueueAnalysisJob } from '../jobs/queue';
 
@@ -194,7 +195,7 @@ async function synthesizeSegment(text: string, voice: string) {
  * 结构化聊天接口
  */
 router.post('/chat', async (req, res) => {
-  const { message, history, prefs, event } = req.body;
+  const { message, history, event } = req.body;
 
   if (!message || typeof message !== 'string') {
     return res.status(400).json({
@@ -220,7 +221,8 @@ router.post('/chat', async (req, res) => {
     });
   }
 
-  const chatRequest: ChatRequest = { message, history, prefs, event };
+  // VIP 由服务端判定（默认所有人都不是 VIP）；请求体里的 prefs / is_vip 一律忽略
+  const chatRequest: ChatRequest = { message, history, event, isVip: resolveIsVip(req.headers) };
   const result = await handleChatEvent(chatRequest);
   
   if (result.success === false) {
