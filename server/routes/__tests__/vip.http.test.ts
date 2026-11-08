@@ -25,6 +25,10 @@ dbModule.exports = { __esModule: true, default: { prepare: () => fakeStmt, exec:
 require.cache[dbPath] = dbModule;
 
 import express from 'express';
+import Database from 'better-sqlite3';
+import { AuthService } from '../../auth/service';
+import { migrateAuthTables } from '../../auth/schema';
+import { __setAuthServiceForTest } from '../../auth';
 import { __setProviderForTest } from '../../llm/registry';
 import type { GenerateRequest, LLMProvider } from '../../llm';
 import { loadKnowledgeBase } from '../../knowledge/loader';
@@ -38,6 +42,7 @@ const SECRET_SECTION_REGEX = /【(?:核心秘诀|VIP专属)[^】]*】([\s\S]*?)(
 
 let server: Server;
 let baseUrl = '';
+let authToken = '';             // 对话接口需要登录；这里用一个真实登录得到的令牌
 let secretMarker = '';          // 知识库里「核心秘诀」正文的一小段，用来检查它有没有进入模型
 let modelPrompts: string[] = []; // 每次 chat 调用收到的 system prompt
 
@@ -62,6 +67,18 @@ before(async () => {
   loadKnowledgeBase();
   __setProviderForTest('gemini', fake);
 
+  // 账号服务用内存库；通过真实的「发码 → 登录」拿到令牌
+  const authDb = new Database(':memory:');
+  migrateAuthTables(authDb);
+  const authService = new AuthService(authDb, {
+    secret: 'vip-test-secret-vip-test-secret-0123456',
+    sender: { name: 'fake', async sendLoginCode() {} },
+    generateCode: () => '123456',
+  });
+  __setAuthServiceForTest(authService);
+  await authService.sendCode({ phone: '13800000009', consent: true });
+  authToken = authService.login({ phone: '13800000009', code: '123456' }).token;
+
   // 从真实知识库里找出「核心秘诀」正文，确认测试前提成立（否则这个测试什么也证明不了）
   for (const hit of matchKnowledge(MESSAGE)) {
     const m = hit.content.match(SECRET_SECTION_REGEX);
@@ -79,6 +96,7 @@ before(async () => {
 
 after(async () => {
   __setProviderForTest('gemini', undefined);
+  __setAuthServiceForTest(null);
   delete process.env.VIP_ACCESS_TOKENS;
   await new Promise(resolve => server.close(resolve));
 });
@@ -91,7 +109,7 @@ beforeEach(() => {
 async function chat(body: Record<string, unknown>, headers: Record<string, string> = {}) {
   const res = await fetch(`${baseUrl}/api/v2/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...headers },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}`, ...headers },
     body: JSON.stringify({ message: MESSAGE, ...body }),
   });
   const json: any = await res.json();

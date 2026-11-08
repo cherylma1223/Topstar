@@ -15,6 +15,7 @@ import { tts, isCapabilityAvailable, getPrimaryModel } from '../llm';
 import { probeVideoDuration } from '../video/probe';
 import { fixMultipartFilename } from '../utils/filename';
 import { resolveIsVip } from '../auth/vip';
+import { requireAuth } from '../auth/middleware';
 import db from '../db';
 import { enqueueAnalysisJob } from '../jobs/queue';
 
@@ -192,9 +193,9 @@ async function synthesizeSegment(text: string, voice: string) {
 
 /**
  * POST /api/v2/chat
- * 结构化聊天接口
+ * 结构化聊天接口（需要登录）
  */
-router.post('/chat', async (req, res) => {
+router.post('/chat', requireAuth, async (req, res) => {
   const { message, history, event } = req.body;
 
   if (!message || typeof message !== 'string') {
@@ -237,9 +238,9 @@ router.post('/chat', async (req, res) => {
 
 /**
  * POST /api/v2/tts
- * 结构化 TTS 接口
+ * 结构化 TTS 接口（需要登录）
  */
-router.post('/tts', async (req, res) => {
+router.post('/tts', requireAuth, async (req, res) => {
   const {
     contentType = 'text',
     text,
@@ -399,9 +400,11 @@ const upload = multer({
 
 /**
  * POST /api/v2/analysis/jobs
- * 上传视频文件，创建分析任务，返回 job_id
+ * 上传视频文件，创建分析任务，返回 job_id（需要登录）
+ *
+ * requireAuth 必须排在 multer 之前：未登录的请求在读取请求体（最大 500MB 的视频）之前就被拒绝。
  */
-router.post('/analysis/jobs', (req, res) => {
+router.post('/analysis/jobs', requireAuth, (req, res) => {
   upload.single('video')(req, res, async (err) => {
     if (err) {
       const isFileSizeError = err.message?.includes('File too large') || err.code === 'LIMIT_FILE_SIZE';
@@ -463,8 +466,8 @@ router.post('/analysis/jobs', (req, res) => {
     // 写入 DB
     db.prepare(`
       INSERT INTO analysis_jobs
-        (id, status, analysis_type, video_path, video_filename, video_size, video_duration, mime_type, created_at)
-      VALUES (?, 'queued', ?, ?, ?, ?, ?, ?, ?)
+        (id, status, analysis_type, video_path, video_filename, video_size, video_duration, mime_type, user_id, created_at)
+      VALUES (?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       jobId,
       analysisType,
@@ -473,6 +476,7 @@ router.post('/analysis/jobs', (req, res) => {
       file.size,
       videoDuration,
       file.mimetype,
+      req.user!.id,
       new Date().toISOString()
     );
 
@@ -487,14 +491,14 @@ router.post('/analysis/jobs', (req, res) => {
 
 /**
  * GET /api/v2/analysis/jobs/:id
- * 查询分析任务状态
+ * 查询分析任务状态（需要登录，且只能查自己创建的任务；别人的任务和历史无主任务一律按「不存在」返回）
  */
-router.get('/analysis/jobs/:id', (req, res) => {
+router.get('/analysis/jobs/:id', requireAuth, (req, res) => {
   const { id } = req.params;
 
   const job = db.prepare(
-    `SELECT id, status, analysis_type, report, error, created_at, started_at, completed_at FROM analysis_jobs WHERE id = ?`
-  ).get(id) as {
+    `SELECT id, status, analysis_type, report, error, created_at, started_at, completed_at FROM analysis_jobs WHERE id = ? AND user_id = ?`
+  ).get(id, req.user!.id) as {
     id: string;
     status: string;
     analysis_type: string;

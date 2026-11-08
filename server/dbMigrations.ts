@@ -48,6 +48,23 @@ export function migrateAnalysisJobs(db: DatabaseType): MigrationResult {
 }
 
 /**
+ * analysis_jobs.user_id：任务归属的用户
+ *
+ * 账号体系上线后，创建任务必须登录，读取任务只能由创建者本人读。
+ * 历史任务（上线前创建，没有 user_id）不属于任何人，接口一律按「不存在」处理，不会被任何账号读到。
+ * 返回是否新增了列。
+ */
+export function migrateAnalysisJobsOwner(db: DatabaseType): boolean {
+  let added = false;
+  if (!hasColumn(db, 'analysis_jobs', 'user_id')) {
+    db.exec(`ALTER TABLE analysis_jobs ADD COLUMN user_id TEXT`);
+    added = true;
+  }
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_analysis_jobs_user ON analysis_jobs (user_id, created_at)`);
+  return added;
+}
+
+/**
  * analysis_jobs.video_filename：修复历史上被 multer 按 latin1 误读的中文文件名
  *
  * 只改写「确认是 latin1 误读的 UTF-8」的记录（规则见 fixMultipartFilename），

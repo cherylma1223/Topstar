@@ -1,6 +1,7 @@
 import Database, { type Database as DatabaseType } from 'better-sqlite3';
 import path from 'path';
-import { migrateAnalysisJobs, repairFilenameEncoding } from './dbMigrations';
+import { migrateAnalysisJobs, migrateAnalysisJobsOwner, repairFilenameEncoding } from './dbMigrations';
+import { migrateAuthTables } from './auth/schema';
 
 const DB_PATH = path.join(__dirname, 'data', 'topstar.db');
 
@@ -67,6 +68,12 @@ db.exec(`
 const migration = migrateAnalysisJobs(db);
 if (migration.added.length > 0 || migration.backfilled > 0) {
   console.log(`[DB] analysis_jobs migrated: added=[${migration.added.join(',')}] backfilled=${migration.backfilled}`);
+}
+
+// 账号体系：用户 / 验证码 / 会话表，以及任务归属列（幂等）
+migrateAuthTables(db);
+if (migrateAnalysisJobsOwner(db)) {
+  console.log('[DB] analysis_jobs migrated: added=[user_id]（历史任务没有归属，任何账号都读不到）');
 }
 
 // 修复历史上被误读为 latin1 的中文文件名（幂等）

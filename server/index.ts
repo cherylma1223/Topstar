@@ -6,6 +6,8 @@ import 'dotenv/config';
 
 import { loadKnowledgeBase } from './knowledge/loader';
 import v2Router from './routes/v2';
+import authRouter from './routes/auth';
+import { initAuthService } from './auth';
 import { startLinkHealthCheck } from './jobs/linkHealthCheck';
 import { startTutorialSyncJob } from './jobs/tutorialSyncJob';
 import { recoverStaleJobs, startAnalysisWorker } from './jobs/analysisWorker';
@@ -13,6 +15,16 @@ import { isCapabilityAvailable, getDeployRegion } from './llm';
 
 const app = express();
 const port = process.env.PORT || 3001;
+
+// 配置有问题（缺 AUTH_SECRET、生产环境用了控制台短信等）直接让服务启动失败
+const authService = initAuthService();
+
+// 部署在 nginx 等反向代理之后时，设置 TRUST_PROXY=1（代理层数），req.ip 才是真实客户端 IP；
+// 不设置就不信任 X-Forwarded-For（防止被伪造 IP 绕过按 IP 的限制）
+if (process.env.TRUST_PROXY) {
+  const hops = Number(process.env.TRUST_PROXY);
+  app.set('trust proxy', Number.isInteger(hops) && hops > 0 ? hops : process.env.TRUST_PROXY);
+}
 
 // 防止未捕获异常导致进程退出
 process.on('uncaughtException', (err) => {
@@ -28,6 +40,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(morgan('dev'));
 
 // 挂载路由
+app.use('/api/v2/auth', authRouter);
 app.use('/api/v2', v2Router);
 
 // 兼容旧的健康检查路径
@@ -41,6 +54,13 @@ app.listen(port, () => {
 
   // 加载知识库
   loadKnowledgeBase();
+
+  // 定时清理过期的验证码和登录会话（启动时一次，之后每小时一次）
+  const cleanupAuth = () => {
+    try { authService.cleanup(); } catch (err: any) { console.error('[Auth] cleanup failed:', err?.message || err); }
+  };
+  cleanupAuth();
+  setInterval(cleanupAuth, 60 * 60 * 1000).unref();
 
   // 启动链接健康检查定时任务
   startLinkHealthCheck();
