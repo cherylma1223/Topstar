@@ -7,6 +7,7 @@ import {
   getTTSRequestKey,
   type TTSRequest,
 } from '../geminiService.ts';
+import { getToken, requestLogin } from '../utils/auth.ts';
 
 interface AIFormattedTextBubbleProps {
   id: string;
@@ -196,6 +197,10 @@ const AIFormattedTextBubble: React.FC<AIFormattedTextBubbleProps> = ({
     }
 
     if (!audioBuffersRef.current?.length) {
+      if (!getToken()) {
+        requestLogin('语音朗读需要先登录');
+        return;
+      }
       const buffers = await loadAudioBuffers();
       if (!buffers?.length) {
         console.error('Speech generation failed');

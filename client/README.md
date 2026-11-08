@@ -11,6 +11,14 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
+## 登录
+
+对话、视频分析、语音朗读需要登录（手机号 + 短信验证码），首页、聊天页浏览和设置不需要。登录态与接口封装在 `utils/auth.ts`，登录窗口是 `components/LoginModal.tsx`。需要登录的接口一律用 `authedFetch` 调用；想让用户登录时调用 `requestLogin('原因')`。
+
+本地联调：后端 `server/.env` 里配置 `AUTH_SECRET`、`SMS_PROVIDER=console`，并可设 `SMS_FIXED_CODE=123456`（仅开发环境生效），登录时手机号随便填一个合法号码，验证码输入 123456。
+
+端口被占用时可以换端口启动：`npm run dev -- --port 3100 --strictPort`（接口代理仍指向后端 `:3001`）。
+
 ## 构建
 
 ```bash
@@ -51,3 +59,4 @@ npm run build:icons
 | 日期 | 变更 |
 | --- | --- |
 | 2026-11-08 | 重写 README（原为 AI Studio 模板，含已失效的 `GEMINI_API_KEY` 说明）；记录去境外 CDN 后的构建方式（Tailwind 构建期编译、字体自托管、图标子集、`check:icons`/`check:dist`）。 |
+| 2026-11-08 | 新增「登录」一节（账号体系接入说明、本地联调方法、换端口启动）。 |

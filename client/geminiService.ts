@@ -1,5 +1,6 @@
 
 import type { AnalysisReport } from './types.ts';
+import { authedFetch, AuthRequiredError, getToken } from './utils/auth.ts';
 
 /**
  * Gemini Service — 通过后端代理访问 AI 能力
@@ -70,7 +71,7 @@ export const getAIResponseV2 = async (
 ): Promise<ChatResponseV2> => {
   try {
     const data = await withRetry(async () => {
-      const res = await fetch('/api/v2/chat', {
+      const res = await authedFetch('/api/v2/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message, history, event }),
@@ -86,7 +87,9 @@ export const getAIResponseV2 = async (
   } catch (error) {
     console.error("Gemini Service V2 Error:", error);
     let fallbackMsg = "AI 助手目前正忙（服务过载），请稍后重试。";
-    if (error instanceof TypeError && error.message.includes('fetch')) {
+    if (error instanceof AuthRequiredError) {
+      fallbackMsg = `${error.message}后再试一次。`;
+    } else if (error instanceof TypeError && error.message.includes('fetch')) {
       fallbackMsg = "网络连接失败，请检查您的网络环境。";
     }
     
@@ -301,6 +304,9 @@ export function getTTSRequestKey(request: TTSRequest): string {
 }
 
 async function fetchSpeechPlan(request: TTSRequest): Promise<TTSResponse | null> {
+  // 语音合成需要登录。后台预取时没登录就直接放弃（不弹窗、也不缓存结果，登录后可以重新取）
+  if (!getToken()) return null;
+
   const cacheKey = getTTSRequestKey(request);
   const cached = speechPlanCache.get(cacheKey);
   if (cached) return cached;
@@ -308,7 +314,7 @@ async function fetchSpeechPlan(request: TTSRequest): Promise<TTSResponse | null>
   const promise = (async () => {
     try {
       const data = await withRetry(async () => {
-        const res = await fetch('/api/v2/tts', {
+        const res = await authedFetch('/api/v2/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -316,7 +322,7 @@ async function fetchSpeechPlan(request: TTSRequest): Promise<TTSResponse | null>
             voice: request.voice || 'Kore',
             locale: request.locale || 'zh-CN',
           }),
-        });
+        }, { promptOnUnauthorized: false }); // TTS 常在后台预取，登录失效时不要突然弹窗
         if (!res.ok) {
           const err = await res.json().catch(() => ({ error: res.statusText }));
           throw new Error(err.error?.message || err.error || `HTTP ${res.status}`);
@@ -341,6 +347,8 @@ export function prefetchSpeech(request: TTSRequest): void {
 }
 
 export async function getSpeechAudioBuffers(request: TTSRequest): Promise<AudioBuffer[] | null> {
+  if (!getToken()) return null; // 没登录：不请求、也不缓存「失败」，登录后再点播放可以正常取到
+
   const cacheKey = getTTSRequestKey(request);
   const cached = decodedSpeechCache.get(cacheKey);
   if (cached) return cached;
@@ -365,6 +373,8 @@ export async function getSpeechAudioBuffers(request: TTSRequest): Promise<AudioB
   })();
 
   decodedSpeechCache.set(cacheKey, promise);
+  // 失败（null）不缓存，否则登录失效 / 网络抖动之后同一段文字永远取不到语音
+  void promise.then(result => { if (!result) decodedSpeechCache.delete(cacheKey); }, () => decodedSpeechCache.delete(cacheKey));
   return promise;
 }
 
@@ -460,7 +470,7 @@ export async function createAnalysisJob(
   formData.append('video', videoFile);
   formData.append('analysis_type', analysisType);
 
-  const res = await fetch('/api/v2/analysis/jobs', {
+  const res = await authedFetch('/api/v2/analysis/jobs', {
     method: 'POST',
     body: formData,
   });
@@ -476,7 +486,7 @@ export async function createAnalysisJob(
  * 查询 job 状态
  */
 export async function getAnalysisJobStatus(jobId: string): Promise<AnalysisJobStatus> {
-  const res = await fetch(`/api/v2/analysis/jobs/${jobId}`);
+  const res = await authedFetch(`/api/v2/analysis/jobs/${jobId}`);
   const data: AnalysisJobStatus = await res.json();
 
   // 映射友好错误消息

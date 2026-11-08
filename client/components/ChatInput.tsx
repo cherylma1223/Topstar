@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 interface ChatInputProps {
-  onSend: (text: string) => void;
+  /** 返回 false 表示这次没有真正发送（例如需要先登录），输入框里的内容会保留 */
+  onSend: (text: string) => boolean | void;
   placeholder?: string;
 }
 
@@ -46,11 +47,11 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSend, placeholder = "请输入�
   const handleSend = () => {
     if (isVoiceMode) {
       if (!transcription.trim()) return;
-      onSend(transcription);
+      if (onSend(transcription) === false) return;
       setTranscription('');
     } else {
       if (!inputText.trim()) return;
-      onSend(inputText);
+      if (onSend(inputText) === false) return;
       setInputText('');
     }
   };
@@ -84,7 +85,7 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSend, placeholder = "请输入�
     setTimeout(() => {
       setIsRecording(false);
       if (transcription.trim()) {
-        onSend(transcription);
+        if (onSend(transcription) === false) return;
         setTranscription('');
       }
     }, 400);

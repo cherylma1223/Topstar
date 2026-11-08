@@ -52,7 +52,8 @@ def source_files():
 def collect_candidates():
     found = set()
     for p in source_files():
-        text = p.read_text(encoding='utf-8', errors='ignore')
+        # 带 icon-check-ignore 标记的行不参与识别（与 check-icons.mjs 保持一致）
+        text = '\n'.join(line for line in p.read_text(encoding='utf-8', errors='ignore').split('\n') if 'icon-check-ignore' not in line)
         for pattern in USED_ICON_PATTERNS:
             found.update(pattern.findall(text))
     return found

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AppScreen } from '../types.ts';
+import type { AuthUser } from '../utils/auth.ts';
 
 interface HistoryEntry {
   id: string;
@@ -14,9 +15,12 @@ interface SidebarProps {
   onNavigate: (screen: AppScreen) => void;
   onSettingsClick: () => void;
   historyItems: HistoryEntry[];
+  /** 当前登录用户；null 表示未登录 */
+  user: AuthUser | null;
+  onLogin: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onNavigate, onSettingsClick, historyItems }) => {
+const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onNavigate, onSettingsClick, historyItems, user, onLogin }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredEntries = historyItems.filter(entry => 
@@ -99,15 +103,22 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onNavigate, onSettin
         </div>
 
         <div className="px-4 py-2.5 border-t border-slate-100 dark:border-white/5 bg-slate-50 dark:bg-background-dark/40 pb-[calc(0.6rem+env(safe-area-inset-bottom))]">
-          <div className="flex items-center gap-3 p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer group">
+          <div
+            onClick={user ? undefined : onLogin}
+            className="flex items-center gap-3 p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer group"
+          >
             <div className="size-8 rounded-full bg-gradient-to-br from-primary to-purple-500 p-[1px] shadow-md shadow-primary/10">
-              <div className="w-full h-full rounded-full bg-slate-100 dark:bg-surface-dark flex items-center justify-center text-[10px] font-bold text-slate-900 dark:text-white group-hover:bg-primary/20 transition-colors">樊</div>
+              <div className="w-full h-full rounded-full bg-slate-100 dark:bg-surface-dark flex items-center justify-center text-slate-900 dark:text-white group-hover:bg-primary/20 transition-colors">
+                <span className="material-symbols-outlined text-[18px]">person</span>
+              </div>
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-semibold text-slate-900 dark:text-white truncate tracking-wide">樊振东</div>
+              <div className="text-[13px] font-semibold text-slate-900 dark:text-white truncate tracking-wide">
+                {user ? user.phoneMasked : '点击登录'}
+              </div>
             </div>
             <button 
-              onClick={onSettingsClick}
+              onClick={(e) => { e.stopPropagation(); onSettingsClick(); }}
               className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-white/10 transition-all active:scale-90"
             >
               <span className="material-symbols-outlined text-slate-400 dark:text-white/20 text-[20px] group-hover:text-primary transition-colors">settings</span>

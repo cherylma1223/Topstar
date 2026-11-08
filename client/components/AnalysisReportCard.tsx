@@ -7,6 +7,7 @@ import {
   getTTSRequestKey,
   type TTSRequest,
 } from '../geminiService.ts';
+import { getToken, requestLogin } from '../utils/auth.ts';
 import TypewriterText from './TypewriterText.tsx';
 
 interface AnalysisReportCardProps { 
@@ -225,6 +226,10 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
     }
 
     if (!audioBuffersRef.current?.length) {
+      if (!getToken()) {
+        requestLogin('语音朗读需要先登录');
+        return;
+      }
       const buffers = await loadAudioBuffers();
       if (!buffers?.length) {
         console.error('Speech generation failed');

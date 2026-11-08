@@ -8,7 +8,9 @@ import ChatScreen from './components/ChatScreen.tsx';
 import ChatInput from './components/ChatInput.tsx';
 import SettingsScreen from './components/SettingsScreen.tsx';
 import AppearanceSettingsScreen from './components/AppearanceSettingsScreen.tsx';
+import LoginModal from './components/LoginModal.tsx';
 import { getAIResponseV2 } from './geminiService.ts';
+import { getToken, logout, refreshSession, requestLogin, useAuthState } from './utils/auth.ts';
 
 interface HistoryEntry {
   id: string;
@@ -44,6 +46,12 @@ const App: React.FC = () => {
 
   // 全局控制语音播放状态，确保切换页面或触发特定导航时能停止语音
   const [activeAudioId, setActiveAudioId] = useState<string | null>(null);
+
+  // 登录态：对话、视频分析、语音朗读都需要登录
+  const { user } = useAuthState();
+  useEffect(() => {
+    void refreshSession(); // 启动时向服务端确认令牌仍然有效
+  }, []);
 
   // Define isSettingsFlow to determine if we are in a sub-menu flow
   // This fixes the 'isSettingsFlow' missing variable errors.
@@ -133,6 +141,10 @@ const App: React.FC = () => {
   };
 
   const handleSendMessage = async (text: string) => {
+    if (!getToken()) {
+      requestLogin('发送消息需要先登录');
+      return;
+    }
     setHasEngaged(true);
     const userMsgId = `user-${Date.now()}`;
     const userMsg: Message = {
@@ -259,6 +271,13 @@ const App: React.FC = () => {
 
   const handleStartAnalysis = (title: string, icon: string, initialText?: string) => {
     setActiveAudioId(null);
+
+    // 带预设问题的入口会直接发起对话，需要先登录；不带预设问题的入口只是打开聊天页，可以先看看
+    if (initialText && !getToken()) {
+      requestLogin('向教练提问需要先登录');
+      return;
+    }
+
     setActiveService(title);
     setActiveServiceCategory(title);
     setActiveIcon(icon);
@@ -293,6 +312,11 @@ const App: React.FC = () => {
       }
       return newHistory;
     });
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    handleResetToHome(); // 清掉上一个账号的对话内容
   };
 
   const toggleSidebar = () => {
@@ -370,6 +394,9 @@ const App: React.FC = () => {
             onToggleAutoRead={setIsAutoReadEnabled}
             isAutoAnalyzeEnabled={isAutoAnalyzeEnabled}
             onToggleAutoAnalyze={setIsAutoAnalyzeEnabled}
+            user={user}
+            onLogin={() => requestLogin('登录后可以使用对话、视频分析和语音朗读')}
+            onLogout={handleLogout}
           />
         );
       case AppScreen.APPEARANCE:
@@ -399,6 +426,8 @@ const App: React.FC = () => {
           }}
           onSettingsClick={navigateToSettings}
           historyItems={history}
+          user={user}
+          onLogin={() => requestLogin('登录后可以使用对话、视频分析和语音朗读')}
         />
 
         <Header
@@ -416,11 +445,17 @@ const App: React.FC = () => {
         {!isSettingsFlow && (
           <div className="absolute bottom-0 left-0 right-0 z-[100]">
             <ChatInput onSend={(text) => {
+              if (!getToken()) {
+                requestLogin('发送消息需要先登录，登录后点一下发送即可'); // 返回 false：输入框里的内容保留
+                return false;
+              }
               setActiveAudioId(null); // 发送新消息时停止朗读
               handleSendMessage(text);
             }} />
           </div>
         )}
+
+        <LoginModal />
 
         {/* 沉浸式视频播放层 */}
         {activeVideoUrl && (

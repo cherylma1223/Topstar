@@ -1,4 +1,5 @@
 import React from 'react';
+import type { AuthUser } from '../utils/auth.ts';
 
 interface SettingsScreenProps {
   onBack: () => void;
@@ -9,6 +10,10 @@ interface SettingsScreenProps {
   onToggleAutoRead: (val: boolean) => void;
   isAutoAnalyzeEnabled: boolean;
   onToggleAutoAnalyze: (val: boolean) => void;
+  /** 当前登录用户；null 表示未登录 */
+  user: AuthUser | null;
+  onLogin: () => void;
+  onLogout: () => void;
 }
 
 const SettingsScreen: React.FC<SettingsScreenProps> = ({ 
@@ -19,7 +24,10 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({
   isAutoReadEnabled,
   onToggleAutoRead,
   isAutoAnalyzeEnabled,
-  onToggleAutoAnalyze
+  onToggleAutoAnalyze,
+  user,
+  onLogin,
+  onLogout
 }) => {
   const getAppearanceLabel = () => {
     return appearanceMode === 'dark' ? "深色模式" : "浅色模式";
@@ -29,21 +37,28 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({
     <div className="flex flex-col h-full bg-slate-50 dark:bg-background-dark animate-fade-in-up overflow-y-auto no-scrollbar transition-colors">
       <div className="p-6 space-y-6 pb-[calc(100px+env(safe-area-inset-bottom))]">
         
-        {/* 用户信息与积分展示 */}
-        <div className="flex items-center gap-4 bg-white dark:bg-surface-dark p-5 rounded-2xl border border-slate-100 dark:border-white/5 shadow-sm transition-colors relative group/user active:bg-slate-50 dark:active:bg-white/5 cursor-pointer">
-          <div className="size-16 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-2xl font-bold text-white shadow-lg shrink-0">
-            樊
+        {/* 用户信息：已登录显示脱敏手机号；未登录点击弹出登录窗口 */}
+        <div
+          role={user ? undefined : 'button'}
+          onClick={user ? undefined : onLogin}
+          className={`flex items-center gap-4 bg-white dark:bg-surface-dark p-5 rounded-2xl border border-slate-100 dark:border-white/5 shadow-sm transition-colors relative group/user ${user ? '' : 'active:bg-slate-50 dark:active:bg-white/5 cursor-pointer'}`}
+        >
+          <div className="size-16 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white shadow-lg shrink-0">
+            <span className="material-symbols-outlined text-[32px]">person</span>
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-slate-900 dark:text-white font-bold text-lg truncate tracking-tight">樊振东</h2>
+            <h2 className="text-slate-900 dark:text-white font-bold text-lg truncate tracking-tight">
+              {user ? user.phoneMasked : '未登录'}
+            </h2>
             <div className="flex items-center gap-3 mt-1">
-              <span className="text-slate-700 dark:text-text-secondary text-[13px] font-medium opacity-80">剩余积分：100</span>
-              <button className="flex items-center gap-0.5 text-primary dark:text-blue-400 text-[13px] font-bold hover:underline active:opacity-70 transition-all">
-                充值 <span className="material-symbols-outlined text-[14px]">chevron_right</span>
-              </button>
+              <span className="text-slate-700 dark:text-text-secondary text-[13px] font-medium opacity-80">
+                {user ? '已通过手机号登录' : '登录后使用对话、视频分析和语音朗读'}
+              </span>
             </div>
           </div>
-          <span className="material-symbols-outlined text-slate-300 dark:text-white/10 text-[20px]">chevron_right</span>
+          {!user && (
+            <span className="material-symbols-outlined text-slate-300 dark:text-white/10 text-[20px]">chevron_right</span>
+          )}
         </div>
 
         {/* VIP 会员入口卡片 */}
@@ -121,9 +136,21 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </div>
         </section>
 
-        <button className="w-full py-4 text-red-500 font-bold text-sm bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 rounded-2xl transition-all active:scale-[0.98] mt-4 mb-8">
-          退出登录
-        </button>
+        {user ? (
+          <button
+            onClick={onLogout}
+            className="w-full py-4 text-red-500 font-bold text-sm bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 rounded-2xl transition-all active:scale-[0.98] mt-4 mb-8"
+          >
+            退出登录
+          </button>
+        ) : (
+          <button
+            onClick={onLogin}
+            className="w-full py-4 text-primary font-bold text-sm bg-primary/5 hover:bg-primary/10 border border-primary/10 rounded-2xl transition-all active:scale-[0.98] mt-4 mb-8"
+          >
+            登录 / 注册
+          </button>
+        )}
       </div>
     </div>
   );

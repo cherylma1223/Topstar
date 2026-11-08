@@ -7,6 +7,7 @@ import TypewriterText from './TypewriterText.tsx';
 import AIFormattedTextBubble from './AIFormattedTextBubble.tsx';
 import { createAnalysisJob, getAnalysisJobStatus } from '../geminiService.ts';
 import { extractFirstFrame } from '../utils/videoUtils.ts';
+import { getToken, requestLogin } from '../utils/auth.ts';
 
 interface ChatScreenProps {
   messages: Message[];
@@ -154,6 +155,19 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     }]);
   };
 
+  /**
+   * 打开系统的选文件 / 拍摄界面。视频分析需要登录：没登录先弹登录窗口，
+   * 登录后由用户再点一次（iOS 要求选文件必须发生在点击里，不能在异步登录之后自动打开）。
+   */
+  const openVideoPicker = (inputRef: React.RefObject<HTMLInputElement | null>) => {
+    onToggleAudio(null);
+    if (!getToken()) {
+      requestLogin('视频分析需要先登录，登录后再点一次即可');
+      return;
+    }
+    inputRef.current?.click();
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -288,20 +302,14 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
                       <p className="text-slate-900 dark:text-white font-bold text-[13px] mb-4 ml-1 opacity-70">上传视频</p>
                       <div className="flex gap-4">
                         <button 
-                          onClick={() => {
-                            onToggleAudio(null);
-                            selectFileInputRef.current?.click();
-                          }} 
+                          onClick={() => openVideoPicker(selectFileInputRef)} 
                           className="flex-1 h-28 bg-[#e6f0fa] dark:bg-[#1E4064] rounded-2xl flex flex-col items-center justify-center gap-2 text-[#1e4064] dark:text-white font-bold text-xs active:scale-95 transition-all group"
                         >
                           <span className="material-symbols-outlined text-[32px] group-hover:scale-110 transition-transform">image</span>
                           <span>选择视频</span>
                         </button>
                         <button 
-                          onClick={() => {
-                            onToggleAudio(null);
-                            recordFileInputRef.current?.click();
-                          }} 
+                          onClick={() => openVideoPicker(recordFileInputRef)} 
                           className="flex-1 h-28 bg-primary rounded-2xl flex flex-col items-center justify-center gap-2 text-white font-bold text-xs active:scale-95 transition-all group"
                         >
                           <span className="material-symbols-outlined text-[32px] group-hover:scale-110 transition-transform">videocam</span>

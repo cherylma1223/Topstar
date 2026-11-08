@@ -23,6 +23,7 @@ const SCAN_SUFFIXES = new Set(['.ts', '.tsx', '.html']);
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'scripts', '.git']);
 const PATTERNS = [/['"`]([a-z][a-z0-9_]*)['"`]/g, />\s*([a-z][a-z0-9_]*)\s*</g];
 
+const IGNORE_MARK = 'icon-check-ignore';
 const warnOnly = process.argv.includes('--warn');
 
 function* walk(dir) {
@@ -49,7 +50,8 @@ const validNames = new Set(known);
 
 const usedBy = new Map(); // 图标名 → 用到它的文件
 for (const file of walk(ROOT)) {
-  const text = fs.readFileSync(file, 'utf8');
+  // 带 icon-check-ignore 标记的行不参与识别（例如事件名 'storage' 恰好也是一个图标名）
+  const text = fs.readFileSync(file, 'utf8').split('\n').filter(line => !line.includes(IGNORE_MARK)).join('\n');
   for (const pattern of PATTERNS) {
     for (const [, token] of text.matchAll(pattern)) {
       if (!validNames.has(token)) continue;
