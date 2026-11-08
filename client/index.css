@@ -1,0 +1,45 @@
+/*
+ * 全局样式入口（由 index.tsx 引入）
+ *
+ * 字体全部自托管，不再从 Google Fonts 加载：
+ *   - Noto Sans SC / Lexend：@fontsource-variable 包（在 index.tsx 里引入），按 unicode-range 分片，
+ *     浏览器只下载页面实际用到的汉字分片
+ *   - Material Symbols 图标：只包含应用用到的图标的子集字体（约 12 KB，完整字体 3.9 MB），
+ *     由 scripts/build-icon-font.py 生成；新增图标后需要重新生成，构建时 scripts/check-icons.mjs 会检查
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  font-weight: 100 700;
+  /* 字体只有十来 KB：用 block 避免加载瞬间闪现图标的英文名（如 inventory_2） */
+  font-display: block;
+  src: url('./src/assets/fonts/material-symbols-outlined.subset.woff2') format('woff2');
+}
+
+/*
+ * 图标类，与 Google 官方提供的 .material-symbols-outlined 定义一致。
+ * 放在 components 层：这样 text-[18px]、font-bold 等工具类可以覆盖它的 font-size / font-weight，
+ * 与此前 Google 样式先于 Tailwind 工具类加载的层叠顺序一致。
+ */
+@layer components {
+  .material-symbols-outlined {
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-style: normal;
+    font-size: 24px;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    -webkit-font-feature-settings: 'liga';
+    -webkit-font-smoothing: antialiased;
+  }
+}

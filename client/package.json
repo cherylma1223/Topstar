@@ -4,18 +4,29 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/check-icons.mjs --warn",
     "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "node scripts/check-icons.mjs && vite build && node scripts/check-dist.mjs",
+    "preview": "vite preview",
+    "check:icons": "node scripts/check-icons.mjs",
+    "check:dist": "node scripts/check-dist.mjs",
+    "build:icons": "python3 scripts/build-icon-font.py"
   },
   "dependencies": {
+    "@fontsource-variable/lexend": "^5.3.0",
+    "@fontsource-variable/material-symbols-outlined": "^5.3.9",
+    "@fontsource-variable/noto-sans-sc": "^5.3.1",
     "react": "^19.2.3",
-    "react-dom": "^19.2.3",
-    "@google/genai": "1.38.0"
+    "react-dom": "^19.2.3"
   },
   "devDependencies": {
+    "@tailwindcss/container-queries": "^0.1.1",
+    "@tailwindcss/forms": "^0.5.11",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "autoprefixer": "^10.6.2",
+    "postcss": "^8.5.32",
+    "tailwindcss": "^3.4.17",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }
