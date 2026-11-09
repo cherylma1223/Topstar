@@ -4,8 +4,9 @@
  * 设计文档 §6：预处理 → 意图路由 → 检索 → 上下文组装 → 调用模型 → 后处理 → 输出
  */
 import { v4 as uuid } from 'uuid';
-import { classifyIntent, type IntentResult, type IntentType } from '../intent/intentRouter';
+import { classifyIntent, isSensitiveMessage, type IntentResult, type IntentType } from '../intent/intentRouter';
 import { matchKnowledge, getKnowledgeSummary } from '../knowledge/matcher';
+import { searchWeb, formatWebSearchContext, type WebSearchResult } from '../search';
 import { getActionAliasMap } from '../knowledge/loader';
 import { recommendTutorials, type RecommendedTutorial } from '../tutorials/recommendTutorials';
 import { validateTemplate } from './templateValidator';
@@ -40,6 +41,9 @@ export interface ChatResponse {
     degraded: boolean;
     intent_source: string;
     intent_confidence: number;
+    /** 知识库未命中时是否用上了联网检索 */
+    web_search_used?: boolean;
+    web_search_results?: number;
   };
 }
 
@@ -84,6 +88,15 @@ const TEMPLATE_PROMPTS: Partial<Record<IntentType, string>> = {
 
   TUTORIAL_REQUEST: `用户在寻找视频教程。请用1-2句话简要说明这个技术的要点，视频教程会由系统自动推荐，不需要你提供链接。
 重要规则：不要在回复中编造任何视频链接或URL。`,
+
+  OFF_TOPIC: `用户的问题与乒乓球无关。请用一两句话礼貌说明：你是一名乒乓球教练助手，只负责乒乓球相关的问题，然后邀请对方提出乒乓球技术、战术、器材或赛事方面的问题。
+不要展开回答原问题，不要输出任何知识性内容，不要罗列你能做什么的清单。
+重要规则：不要在回复中编造任何视频链接或URL。`,
+
+  GENERAL_TT: `用户问的是乒乓球相关但非技术动作的问题（赛事、球员动态、规则、历史等）。
+请直接回答问题，不要硬套动作教学结构；内容较多时可用【结论】【说明】两段。
+如果参考资料不足以确认（例如具体比分、排名、日期），明确说明信息可能不准确或已过时，不要编造。
+重要规则：不要在回复中编造任何视频链接或URL。`,
 };
 
 // ==================
@@ -115,6 +128,7 @@ export async function handleChatEvent(req: ChatRequest): Promise<ChatResponse | 
     // 2. 知识检索
     const knowledgeHits = matchKnowledge(req.message);
     let knowledgeContext = '';
+    let webSearchResults: WebSearchResult[] = [];
     let hasVipSecret = false;
     const isVip = req.isVip === true; // 由服务端判定，不信任客户端传入的任何字段
 
@@ -134,7 +148,28 @@ export async function handleChatEvent(req: ChatRequest): Promise<ChatResponse | 
 
         knowledgeContext += `【${item.title}】(Ref: ${item.id})\n${contentToFeed}\n\n`;
       }
-    } else {
+    }
+
+    // 2b. 联网检索
+    // - GENERAL_TT（赛事/球员动态/规则历史）**无条件检索**：这类问题静态知识库天然覆盖不到，
+    //   而「比赛」这类泛关键词又容易误命中战术库，导致该搜的时候被挡掉。
+    // - 其余意图仅在知识库零命中时兜底。
+    // - 跳过三种：VIDEO_ANALYSIS（要用户自己的视频）、OFF_TOPIC（与乒乓球无关）、敏感词（不该去搜）。
+    const skipWebSearch =
+      intentResult.intent === 'VIDEO_ANALYSIS' ||
+      intentResult.intent === 'OFF_TOPIC' ||
+      isSensitiveMessage(req.message);
+    const needsWebSearch =
+      intentResult.intent === 'GENERAL_TT' || knowledgeHits.length === 0;
+
+    if (!skipWebSearch && needsWebSearch) {
+      webSearchResults = await searchWeb(req.message);
+    }
+
+    if (webSearchResults.length > 0) {
+      knowledgeContext += '\n\n' + formatWebSearchContext(webSearchResults);
+    } else if (knowledgeHits.length === 0) {
+      // 既没命中知识库、也没检索到结果 → 退回「凭自身知识回答」的提示
       knowledgeContext = '\n\n' + getKnowledgeSummary();
     }
 
@@ -250,7 +285,9 @@ export async function handleChatEvent(req: ChatRequest): Promise<ChatResponse | 
       title: hit.title,
     }));
 
-    console.log(`[Orchestrator] ${requestId} | intent=${intentResult.intent} | vip=${isVip} | refs=${references.length} | tutorials=${tutorialVideos.length} | ${Date.now() - startTime}ms`);
+    console.log(
+      `[Orchestrator] ${requestId} | intent=${intentResult.intent} | vip=${isVip} | refs=${references.length} | web=${webSearchResults.length} | tutorials=${tutorialVideos.length} | ${Date.now() - startTime}ms`
+    );
 
     return {
       success: true,
@@ -265,6 +302,9 @@ export async function handleChatEvent(req: ChatRequest): Promise<ChatResponse | 
         degraded: intentResult.source === 'fallback',
         intent_source: intentResult.source,
         intent_confidence: intentResult.confidence,
+        // 知识库未命中时是否用上了联网检索（排查「为什么这次回答很泛」用）
+        web_search_used: webSearchResults.length > 0,
+        web_search_results: webSearchResults.length,
       },
     };
   } catch (err: any) {

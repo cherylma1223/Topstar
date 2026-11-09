@@ -22,6 +22,9 @@ cd server && npm test                   # node:test 测试套件（含 auth / �
 cd server && npm run verify-sms -- 13800138000            # 走当前配置发码（开发默认演练，不调阿里云）
 cd server && npm run verify-sms -- 13800138000 --real    # 强制真发
 cd server && npm run verify-sms -- 13800138000 --status  # 查当天投递回执（含运营商错误码解释）
+cd server && npm run verify-llm                  # 打印各能力实际解析到的 provider / 模型 / 凭证
+cd server && npm run verify-llm -- --call intent  # 真实调用一次（intent | chat）
+cd server && npm run verify-llm -- --search "反手拨球 易犯错误"  # 试一次联网检索
 ```
 
 ### 注意事项
@@ -44,8 +47,8 @@ cd server && npm run verify-sms -- 13800138000 --status  # 查当天投递回执
 
 `server/orchestrator/handleChatEvent.ts` 是对话的核心 pipeline：
 
-1. **意图识别** → `intent/intentRouter.ts`：两层分类（规则优先，LLM 兜底），6 种意图：ACTION_COACHING / TACTIC_ADVICE / EQUIPMENT_QA / TUTORIAL_REQUEST / VIDEO_ANALYSIS / OFF_TOPIC
-2. **知识检索** → `knowledge/loader.ts` + `knowledge/matcher.ts`：从 `client/knowledge/` 加载 Markdown 知识库，关键词匹配
+1. **意图识别** → `intent/intentRouter.ts`：两层分类（规则优先，LLM 兜底），7 种意图：ACTION_COACHING / TACTIC_ADVICE / EQUIPMENT_QA / TUTORIAL_REQUEST / VIDEO_ANALYSIS / GENERAL_TT（乒乓球相关的赛事、球员动态、规则历史，自由格式不套技术模板）/ OFF_TOPIC（**仅限**与乒乓球完全无关的话题，乒乓球相关一律不得判为此类；命中后轻拒答并引导回乒乓球，不展开回答）
+2. **知识检索** → `knowledge/loader.ts` + `knowledge/matcher.ts`：从 `client/knowledge/` 加载 Markdown 知识库，关键词匹配；`GENERAL_TT`（赛事/球员/规则）**无条件**走 `search/`（DeepSeek Search API，`v1/tools/search`）联网检索，其余意图仅在知识库零命中时兜底；注入前按 `rerank_score ≥ 1.5` 过滤并标注为不可信数据；`VIDEO_ANALYSIS`、`OFF_TOPIC` 与敏感词不检索，检索失败/关闭则退回模型自身知识（`getKnowledgeSummary`）
 3. **教程推荐** → `tutorials/recommendTutorials.ts`：召回→打分→重排，分值权重：action_id 匹配 +5，tag 命中 +2（上限），标题 +0.5
 4. **上下文组装** + **LLM 调用**（`gemini-3-flash-preview`）→ 将知识库内容、教程推荐、模板约束注入 system instruction
 5. **模板校验** → `orchestrator/templateValidator.ts`：确保 LLM 输出包含模板要求的必要段落
@@ -94,7 +97,7 @@ Worker (`server/jobs/analysisWorker.ts`) 每 10 秒轮询 `analysis_jobs` 表中
 
 ### 知识库
 
-`client/knowledge/` 存放知识库 Markdown 文件 + `chat_knowledge_index.json`，服务端启动时加载到内存 Map。`knowledge_git_repo/` 是知识库的独立 git 仓库。
+`client/knowledge/` 存放知识库 Markdown 文件 + `chat_knowledge_index.json`，服务端启动时加载到内存 Map。
 
 ## 视频分析全链路追踪报告
 

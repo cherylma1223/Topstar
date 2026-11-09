@@ -12,6 +12,7 @@
     "bootstrap-scores": "tsx scripts/bootstrapQualityScores.ts",
     "eval": "tsx eval/evalVideo.ts",
     "verify-sms": "tsx scripts/verifySms.ts",
+    "verify-llm": "tsx scripts/verifyLlm.ts",
     "test": "node --import tsx --test \"llm/__tests__/*.test.ts\" \"video/__tests__/*.test.ts\" \"__tests__/*.test.ts\" \"utils/__tests__/*.test.ts\" \"eval/__tests__/*.test.ts\" \"videoAnalysis/__tests__/*.test.ts\" \"auth/__tests__/*.test.ts\" \"routes/__tests__/*.test.ts\" \"orchestrator/__tests__/*.test.ts\""
   },
   "keywords": [],

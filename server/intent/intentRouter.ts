@@ -15,6 +15,9 @@ export type IntentType =
   | 'EQUIPMENT_QA'
   | 'TUTORIAL_REQUEST'
   | 'VIDEO_ANALYSIS'
+  // 乒乓球相关但不属于技术动作类：赛事、球员动态、规则、历史等。自由格式回答，套模板会答非所问
+  | 'GENERAL_TT'
+  // 仅限与乒乓球完全无关的话题；乒乓球相关一律不得判为 OFF_TOPIC
   | 'OFF_TOPIC';
 
 export interface IntentResult {
@@ -42,11 +45,16 @@ const EQUIPMENT_BRANDS = ['蝴蝶', '红双喜', '斯帝卡', '挺拔', '银河'
 // 敏感词（极简黑名单，可后续扩展）
 const SENSITIVE_KEYWORDS = ['赌博', '色情', '暴力', '毒品'];
 
+/** 敏感词判定（规则层与联网检索前置共用，避免「跑题也去搜」把不良内容带进上下文） */
+export function isSensitiveMessage(message: string): boolean {
+  return SENSITIVE_KEYWORDS.some(w => message.includes(w));
+}
+
 function ruleBasedClassify(message: string, event?: string): IntentResult | null {
   const lower = message.toLowerCase();
 
   // 敏感词拦截
-  if (SENSITIVE_KEYWORDS.some(w => message.includes(w))) {
+  if (isSensitiveMessage(message)) {
     return {
       intent: 'OFF_TOPIC',
       secondaryIntents: [],
@@ -114,11 +122,17 @@ async function llmClassify(message: string): Promise<IntentResult> {
 
 可选的 intent 值（必须从以下枚举中选择）：
 - ACTION_COACHING：动作怎么练/要领/纠错
-- TACTIC_ADVICE：实战问题/对抗策略/复盘
+- TACTIC_ADVICE：实战问题/对抗策略/比赛复盘
 - EQUIPMENT_QA：器材咨询/搭配推荐
 - TUTORIAL_REQUEST：明确要视频教程/示范视频
 - VIDEO_ANALYSIS：上传视频并产出分析报告
-- OFF_TOPIC：非乒乓球话题
+- GENERAL_TT：乒乓球相关但非技术动作的问题——赛事结果、球员动态（退役/转会/伤病/排名）、比赛规则与赛制、历史战绩、协会与商业新闻、观赛、业余圈子话题
+- OFF_TOPIC：与乒乓球**完全无关**的话题——娱乐八卦、财经、编程、医疗健康、生活琐事、其他运动项目等
+
+判定铁律：
+1. 只要问题涉及乒乓球（含球员姓名、赛事、规则、器材、训练、伤病、心理），一律不得判为 OFF_TOPIC。
+2. 拿不准是否与乒乓球有关时，判为 GENERAL_TT；宁可多判 GENERAL_TT，也不要错判 OFF_TOPIC。
+3. OFF_TOPIC 只用于明确与乒乓球无关的话题。
 
 可选的 action_id 值（如果是动作相关，从以下候选中选择，否则为 null）：
 ${JSON.stringify(actionIds)}
@@ -155,7 +169,7 @@ ${JSON.stringify(actionIds)}
     const parsed = JSON.parse(jsonMatch[0]);
 
     // 验证返回的 intent 是否在枚举中
-    const validIntents: IntentType[] = ['ACTION_COACHING', 'TACTIC_ADVICE', 'EQUIPMENT_QA', 'TUTORIAL_REQUEST', 'VIDEO_ANALYSIS', 'OFF_TOPIC'];
+    const validIntents: IntentType[] = ['ACTION_COACHING', 'TACTIC_ADVICE', 'EQUIPMENT_QA', 'TUTORIAL_REQUEST', 'VIDEO_ANALYSIS', 'GENERAL_TT', 'OFF_TOPIC'];
     if (!validIntents.includes(parsed.intent)) {
       console.warn('[IntentRouter] LLM returned invalid intent:', parsed.intent);
       return fallbackResult(message);
