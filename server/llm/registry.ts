@@ -7,9 +7,11 @@ import type { LLMProvider, ProviderName, VideoStorage, VideoStorageName } from '
 import { LLMError } from './errors';
 import { GeminiProvider } from './gemini/GeminiProvider';
 import { GeminiFilesStorage } from './gemini/GeminiFilesStorage';
+import { DeepSeekProvider } from './deepseek/DeepSeekProvider';
 
 const providerFactories: Record<ProviderName, () => LLMProvider> = {
   gemini: () => new GeminiProvider(),
+  deepseek: () => new DeepSeekProvider(),
 };
 
 const storageFactories: Record<VideoStorageName, () => VideoStorage> = {

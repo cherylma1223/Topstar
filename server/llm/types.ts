@@ -19,7 +19,7 @@ export type Capability =
   | 'video_pass2'   // 视频诊断报告
   | 'tts';          // 语音合成
 
-export type ProviderName = 'gemini';
+export type ProviderName = 'gemini' | 'deepseek';
 
 /** 视频托管实现。Gemini 用 Files API；国内模型一般用对象存储签名 URL */
 export type VideoStorageName = 'gemini_files';
