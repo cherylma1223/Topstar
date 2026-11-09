@@ -25,12 +25,14 @@ cd server && npm run verify-sms -- 13800138000 --status  # 查当天投递回执
 cd server && npm run verify-llm                  # 打印各能力实际解析到的 provider / 模型 / 凭证
 cd server && npm run verify-llm -- --call intent  # 真实调用一次（intent | chat）
 cd server && npm run verify-llm -- --search "反手拨球 易犯错误"  # 试一次联网检索
+cd server && npm run bench-thinking              # 对比两个实例的耗时/token（如思考模式开关）
 ```
 
 ### 注意事项
 - 客户端通过 Vite proxy 将 `/api` 请求代理到 `localhost:3001`，所有 API 密钥仅存在于服务端
 - 服务端配置全部在 `server/.env`（变量说明见 `server/auth/aliyunSms.ts` 顶部注释；根目录 `.env.example` 是本地样例，被 .gitignore 忽略）；缺 `AUTH_SECRET` 或短信通道配置不安全会**启动失败**
 - 登录态在请求头 `Authorization: Bearer <令牌>`，令牌存 `sessions` 表（只存 sha256）；手机号与验证码均以 `AUTH_SECRET` 做 HMAC 后落库
+- DeepSeek 思考模式当前**全线关闭**（`DEEPSEEK_THINKING=disabled`）：实测 4 类问题平均快 2.3~2.6 倍、output token 降至约 1/4，模板段落完整度不变；逐条对比见 `server/scripts/benchThinking.ts`
 - 短信通道开发期默认**演练模式**（`SMS_DRY_RUN` 未设时：开发不调阿里云、只打日志；生产必须真发，配了 `SMS_DRY_RUN=1` 拒绝启动）；真发送 `SMS_DRY_RUN=0` 或 `npm run verify-sms -- <号码> --real`
 
 ## 架构概览
