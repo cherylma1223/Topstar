@@ -18,11 +18,17 @@ cd server && npm start        # 生产启动
 cd server && npm run import-tutorials   # 导入教程数据
 cd server && npm run sync-tutorials     # 从外部源同步教程
 cd server && npm run bootstrap-scores   # 初始化质量评分
+cd server && npm test                   # node:test 测试套件（含 auth / 路由 / 视频管道）
+cd server && npm run verify-sms -- 13800138000            # 走当前配置发码（开发默认演练，不调阿里云）
+cd server && npm run verify-sms -- 13800138000 --real    # 强制真发
+cd server && npm run verify-sms -- 13800138000 --status  # 查当天投递回执（含运营商错误码解释）
 ```
 
 ### 注意事项
 - 客户端通过 Vite proxy 将 `/api` 请求代理到 `localhost:3001`，所有 API 密钥仅存在于服务端
-- 项目没有测试用例（server 的 test 脚本是占位符，直接 exit 1）
+- 服务端配置全部在 `server/.env`（变量说明见 `server/auth/aliyunSms.ts` 顶部注释；根目录 `.env.example` 是本地样例，被 .gitignore 忽略）；缺 `AUTH_SECRET` 或短信通道配置不安全会**启动失败**
+- 登录态在请求头 `Authorization: Bearer <令牌>`，令牌存 `sessions` 表（只存 sha256）；手机号与验证码均以 `AUTH_SECRET` 做 HMAC 后落库
+- 短信通道开发期默认**演练模式**（`SMS_DRY_RUN` 未设时：开发不调阿里云、只打日志；生产必须真发，配了 `SMS_DRY_RUN=1` 拒绝启动）；真发送 `SMS_DRY_RUN=0` 或 `npm run verify-sms -- <号码> --real`
 
 ## 架构概览
 

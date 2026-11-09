@@ -321,7 +321,8 @@ test('短信配置：生产环境禁用 console 和固定验证码；开发环�
   assert.equal(createSmsSender({}).name, 'console');
   assert.throws(() => createSmsSender({ NODE_ENV: 'production' }), /SMS_PROVIDER/);
   assert.throws(() => createSmsSender({ NODE_ENV: 'production', SMS_PROVIDER: 'console' }), /生产环境/);
-  assert.throws(() => createSmsSender({ SMS_PROVIDER: 'aliyun' }), /尚未实现/);
+  // aliyun 通道已接入：配置缺失时按变量名报错（真实发送的细节见 aliyunSms.test.ts）
+  assert.throws(() => createSmsSender({ SMS_PROVIDER: 'aliyun' }), /ALIYUN_SMS_ACCESS_KEY_ID/);
   assert.throws(() => createSmsSender({ SMS_PROVIDER: 'whatever' }), /未配置短信服务/);
 
   assert.equal(getFixedCode({}), null);
