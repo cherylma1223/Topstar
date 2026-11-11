@@ -11,4 +11,4 @@
 video_id,video_file,action_id,segments,has_voice,issues,tags,notes,source_job
 mashitong-b,mashitong-b.mov,bh_drive,,,,,原文件名：马诗彤-b.MOV,4b06475e-55e4-41f9-8f77-658b4904a856
 dapanpan2,dapanpan2.mov,bh_loop,,,,,原文件名：大盼盼2.MOV,b2d271d0-1b3c-4c1a-9a67-a5269159e53c
-dppbl,dppbl.MOV,bh_loop,,,,,视频在公司电脑 /Users/dong/Documents/Top star FC/训练视频/dppbl.MOV；需复制到 eval/videos/dppbl.MOV 后才能参与评测；金标准由项目负责人于 2026-11-06 确认,
+dppbl,dppbl.MOV,bh_loop,00:00.0-00:20.2,yes,bh_loop_powerlow,side-view; bright; clear,视频在公司电脑 /Users/dong/Documents/Top star FC/训练视频/dppbl.MOV；需复制到 eval/videos/dppbl.MOV 后才能参与评测；金标准由项目负责人于 2026-11-06 确认,

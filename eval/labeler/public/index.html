@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>评测集标注工具</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-title">评测集标注工具</span>
+      <span class="brand-sub" id="brandSub">改动会自动保存</span>
+    </div>
+    <div class="topbar-right">
+      <span class="save-status" id="saveStatus">载入中…</span>
+      <button class="btn" id="btnSave" type="button">保存</button>
+      <button class="btn" id="btnRefresh" type="button">刷新</button>
+      <button class="btn" id="btnValidate" type="button">校验</button>
+      <button class="btn btn-primary" id="btnAdd" type="button">＋ 添加视频</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <div class="progress">已标注 <b id="doneCount">0</b> / <span id="totalCount">0</span></div>
+        <div class="filters" id="filters">
+          <button class="chip active" data-filter="all" type="button">全部</button>
+          <button class="chip" data-filter="todo" type="button">未标注</button>
+          <button class="chip" data-filter="missing" type="button">缺视频</button>
+        </div>
+      </div>
+      <ul class="list" id="list"></ul>
+      <div class="sidebar-foot" id="sidebarFoot"></div>
+    </aside>
+
+    <main class="main">
+      <div class="empty" id="empty" hidden>
+        <div class="empty-title">还没有视频</div>
+        <div class="empty-sub">把视频文件放进 <code>eval/videos/</code>，然后点右上角「＋ 添加视频」。</div>
+      </div>
+
+      <div class="panel" id="panel" hidden>
+        <div class="panel-head">
+          <div class="panel-title-wrap">
+            <h1 class="panel-title" id="panelTitle"></h1>
+            <div class="panel-sub" id="panelSub"></div>
+          </div>
+          <div class="panel-badge" id="panelBadge"></div>
+        </div>
+
+        <div class="video-box" id="videoBox"></div>
+
+        <form class="form" id="form" autocomplete="off" onsubmit="return false"></form>
+
+        <div class="nav">
+          <button class="btn" id="btnPrev" type="button">← 上一条</button>
+          <button class="btn btn-primary" id="btnNextTodo" type="button">下一条未标注 →</button>
+          <button class="btn" id="btnNext" type="button">下一条 →</button>
+        </div>
+      </div>
+
+      <div class="messages" id="messages" hidden></div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <div class="modal" id="modal">
+    <div class="modal-box">
+      <div class="modal-head">
+        <span class="modal-title">添加视频到评测集</span>
+        <button class="icon-btn" id="modalClose" type="button">✕</button>
+      </div>
+      <div class="modal-hint">下面这些视频在 <code>eval/videos/</code> 里，但还没有加入标注表。点击「添加」即可。</div>
+      <div class="modal-list" id="modalList"></div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

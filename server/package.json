@@ -11,6 +11,7 @@
     "sync-tutorials": "tsx scripts/0_sync-tutorials.ts",
     "bootstrap-scores": "tsx scripts/bootstrapQualityScores.ts",
     "eval": "tsx eval/evalVideo.ts",
+    "labeler": "tsx ../eval/labeler/server.ts",
     "verify-sms": "tsx scripts/verifySms.ts",
     "verify-llm": "tsx scripts/verifyLlm.ts",
     "bench-thinking": "tsx scripts/benchThinking.ts",

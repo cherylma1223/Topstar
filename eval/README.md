@@ -6,6 +6,13 @@
 > 命令都在 `server/` 目录下运行：`cd server && npm run eval -- <命令>`
 > 其中 `candidates` / `add` 要读数据库，需要 Node 22（和后端用同一个版本）。
 
+> **给教练：用网页标注（推荐）**
+> ```bash
+> cd server && npm run labeler       # 浏览器打开 http://127.0.0.1:3100
+> ```
+> 左边选视频、右边看片点按钮取时间、下拉/勾选标注，改动自动保存回本文件。添加视频用页面右上角「＋ 添加视频」。
+> 说明见 [labeler/README.md](./labeler/README.md)。下面是手工编辑 CSV 的方式，仍可用作复核和批量修正。
+
 ## 目录
 
 ```

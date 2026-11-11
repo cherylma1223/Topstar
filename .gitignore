@@ -25,3 +25,6 @@ server/uploads/*
 # 评测集视频（体积大，不提交；标注表 eval/labels 和评测结果 eval/runs 会提交）
 eval/videos/*
 !eval/videos/.gitkeep
+
+# 标注工具（npm run labeler）每次保存前自动留的上一版备份
+eval/labels/*.bak
