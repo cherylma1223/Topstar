@@ -182,7 +182,7 @@ export class AuthService {
     ).get(phoneHash) as { id: number; code_hash: string; expires_at: number; attempts: number } | undefined;
 
     if (!row) throw new AuthError('CODE_INVALID', '验证码错误或已失效，请重新获取');
-    if (row.expires_at <= now) throw new AuthError('CODE_EXPIRED', '验证码已过期，请重新获取');
+    if (row.expires_at <= now) throw new AuthError('CODE_EXPIRED', '验证码已过5分钟有效期，请重新获取');
     if (row.attempts >= this.maxAttemptsPerCode) {
       throw new AuthError('CODE_LOCKED', '验证码错误次数过多，请重新获取');
     }
