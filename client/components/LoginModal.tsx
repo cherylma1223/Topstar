@@ -9,6 +9,8 @@ import {
 } from '../utils/auth.ts';
 
 const PHONE_REGEX = /^1[3-9]\d{9}$/;
+/** 发送成功提示的展示时长 */
+const HINT_DURATION_MS = 4500;
 
 /**
  * 登录窗口（手机号 + 短信验证码）
@@ -28,6 +30,23 @@ const LoginModal: React.FC = () => {
   /** 发送成功后的正向提示（与 error 共用同一行位置，优先显示 error） */
   const [hint, setHint] = useState<string | null>(null);
   const codeInputRef = useRef<HTMLInputElement>(null);
+  const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** 显示正向提示，4.5 秒后自动消失 */
+  const showHint = (text: string) => {
+    if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    setHint(text);
+    hintTimerRef.current = setTimeout(() => {
+      setHint(null);
+      hintTimerRef.current = null;
+    }, HINT_DURATION_MS);
+  };
+
+  const clearHint = () => {
+    if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    hintTimerRef.current = null;
+    setHint(null);
+  };
 
   const open = loginPrompt !== null;
 
@@ -36,9 +55,14 @@ const LoginModal: React.FC = () => {
     if (!open) {
       setCode('');
       setError(null);
-      setHint(null);
+      clearHint();
     }
   }, [open]);
+
+  // 卸载时清掉提示的定时器，避免 setState on unmounted
+  useEffect(() => () => {
+    if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+  }, []);
 
   // 重新获取验证码的倒计时
   useEffect(() => {
@@ -70,12 +94,12 @@ const LoginModal: React.FC = () => {
     if (!phoneValid) { setError('请输入正确的 11 位手机号'); return; }
     if (!consent) { setError('请先阅读并同意《用户协议》和《隐私政策》'); return; }
     setError(null);
-    setHint(null);
+    clearHint();
     setSending(true);
     try {
       const wait = await sendSmsCode(phone, true);
       setCooldown(wait);
-      setHint('验证码已发送，5 分钟内有效');
+      showHint('验证码已发送，5 分钟内有效');
       codeInputRef.current?.focus();
     } catch (err) {
       if (err instanceof AuthApiError && err.retryAfter) setCooldown(err.retryAfter);
