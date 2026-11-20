@@ -1,5 +1,10 @@
 
-import type { AnalysisReport } from './types.ts';
+import type {
+  AnalysisReport,
+  ConversationDetail,
+  ConversationSummary,
+  NewConversationMessage,
+} from './types.ts';
 import { authedFetch, AuthRequiredError, getToken } from './utils/auth.ts';
 
 /**
@@ -59,22 +64,45 @@ export interface ChatResponseV2 {
   references: { type: string; id: string; title: string }[];
   tutorialVideos: RecommendedTutorial[];
   report?: any;
+  /** 本轮落库的会话 id；落库失败时不返回，客户端据此判断这轮不进历史 */
+  conversation_id?: string;
+  assistant_message_id?: string;
+}
+
+export interface ChatConversationContext {
+  /** 当前会话；为空时后端自动建一个新会话 */
+  conversationId?: string | null;
+  /** 入口名（只在建会话时生效） */
+  service?: string;
+  /** 用户消息的幂等键：网络重试不会让同一条消息落两次 */
+  clientMsgId?: string;
 }
 
 /**
  * AI 聊天 — 通过后端代理 V2 (结构化返回)
+ *
+ * 传入 conversation 上下文后，服务端会把「用户提问 + AI 回答」写进会话历史，
+ * 并在响应里回传 conversation_id。
  */
 export const getAIResponseV2 = async (
   message: string, 
   history: { sender: string, content: string }[] = [], 
-  event?: string
+  event?: string,
+  conversation: ChatConversationContext = {},
 ): Promise<ChatResponseV2> => {
   try {
     const data = await withRetry(async () => {
       const res = await authedFetch('/api/v2/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, history, event }),
+        body: JSON.stringify({
+          message,
+          history,
+          event,
+          conversation_id: conversation.conversationId ?? undefined,
+          service: conversation.service,
+          client_msg_id: conversation.clientMsgId,
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -103,6 +131,93 @@ export const getAIResponseV2 = async (
     };
   }
 };
+
+// ─── 会话历史（/api/v2/conversations） ───────────────────────────────────────
+
+/**
+ * 会话列表 / 标题模糊搜索。
+ * 未登录或 401 时返回空数组（登录窗由 authedFetch 负责弹），不抛错。
+ */
+export async function listConversations(q?: string, limit = 50): Promise<ConversationSummary[]> {
+  try {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (q && q.trim()) params.set('q', q.trim());
+    const res = await authedFetch(`/api/v2/conversations?${params.toString()}`);
+    if (!res.ok) return [];
+    const data = await res.json().catch(() => null);
+    return Array.isArray(data?.items) ? (data.items as ConversationSummary[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 会话详情 + 全量消息；不存在 / 无权访问返回 null */
+export async function getConversation(id: string): Promise<ConversationDetail | null> {
+  try {
+    const res = await authedFetch(`/api/v2/conversations/${encodeURIComponent(id)}`);
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    return (data?.conversation as ConversationDetail) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function createConversation(
+  input: { title?: string; service?: string } = {},
+): Promise<ConversationSummary | null> {
+  try {
+    const res = await authedFetch('/api/v2/conversations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    return (data?.conversation as ConversationSummary) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function renameConversation(id: string, title: string): Promise<ConversationSummary | null> {
+  try {
+    const res = await authedFetch(`/api/v2/conversations/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    return (data?.conversation as ConversationSummary) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** 批量追加消息（视频分析、本地 mock 回复等非 /chat 来源） */
+export async function appendConversationMessages(
+  id: string,
+  messages: NewConversationMessage[],
+): Promise<{ inserted: number; skipped: number; dropped_payload: number } | null> {
+  try {
+    const res = await authedFetch(`/api/v2/conversations/${encodeURIComponent(id)}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    if (!data?.success) return null;
+    return {
+      inserted: data.inserted ?? 0,
+      skipped: data.skipped ?? 0,
+      dropped_payload: data.dropped_payload ?? 0,
+    };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * TTS

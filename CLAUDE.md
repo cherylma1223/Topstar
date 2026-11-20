@@ -34,6 +34,7 @@ cd server && npm run bench-thinking              # 对比两个实例的耗时/t
 - 登录态在请求头 `Authorization: Bearer <令牌>`，令牌存 `sessions` 表（只存 sha256）；手机号与验证码均以 `AUTH_SECRET` 做 HMAC 后落库
 - DeepSeek 思考模式当前**全线关闭**（`DEEPSEEK_THINKING=disabled`）：实测 4 类问题平均快 2.3~2.6 倍、output token 降至约 1/4，模板段落完整度不变；逐条对比见 `server/scripts/benchThinking.ts`
 - 短信通道开发期默认**演练模式**（`SMS_DRY_RUN` 未设时：开发不调阿里云、只打日志；生产必须真发，配了 `SMS_DRY_RUN=1` 拒绝启动）；真发送 `SMS_DRY_RUN=0` 或 `npm run verify-sms -- <号码> --real`
+- 会话历史**按登录用户绑定**：会话/消息接口一律 `requireAuth`，读别人的会话返回 404（不区分「不存在」）；退出登录**只清本机**（消息区 + 历史列表），服务端数据保留，同一账号重新登录后恢复；未登录时侧边栏历史区为空且搜索框禁用
 
 ## 架构概览
 
@@ -44,6 +45,10 @@ cd server && npm run bench-thinking              # 对比两个实例的耗时/t
 | 路由前缀 | 文件 | 用途 |
 |---------|------|------|
 | `/api/v2` | `server/routes/v2.ts` | 新版 API：编排式 chat、TTS 分段、教程推荐、视频分析 Job CRUD |
+| `/api/v2/auth` | `server/routes/auth.ts` | 手机号 + 短信验证码登录、令牌校验（`/me`）、退出 |
+| `/api/v2/conversations` | `server/routes/conversations.ts` | 会话历史：列表、标题模糊搜索、详情、改标题、追加消息（全部 `requireAuth`） |
+
+会话历史的接口契约见 `docs/api/conversation-history-api.md`，设计与实施计划见 `docs/coding_plan/phase4/Phase 4_conversation_history_design.md`。
 
 ### 核心链路：对话编排 (handleChatEvent)
 
@@ -73,6 +78,11 @@ Worker (`server/jobs/analysisWorker.ts`) 每 10 秒轮询 `analysis_jobs` 表中
 
 - `tutorial_videos` — 教程视频库，含平台信息、标签、关联动作/战术 ID、质量评分、链接健康状态
 - `analysis_jobs` — 视频分析任务，含状态流转（queued → running → done/failed）、分析结果 JSON、Gemini 文件引用
+- `users` / `sessions` / `sms_codes` — 账号体系（手机号只存 HMAC，令牌只存 sha256），建表在 `server/auth/schema.ts`
+- `conversations` — 会话（标题、入口 service、message_count、updated_at），**按 `user_id` 归属**，建表在 `server/conversations/schema.ts`
+- `conversation_messages` — 会话消息（`role` + 纯文本 `content` + 富媒体 `payload` JSON + `seq` 排序 + `client_msg_id` 幂等）
+
+> 时间列不统一：`users`/`sessions`/`conversations` 用毫秒 INTEGER，`analysis_jobs.created_at` 是 ISO TEXT（历史包袱），新表一律用毫秒。
 
 ### 定时任务 (node-cron)
 
@@ -83,9 +93,11 @@ Worker (`server/jobs/analysisWorker.ts`) 每 10 秒轮询 `analysis_jobs` 表中
 
 ### 客户端状态管理
 
-`App.tsx` 是状态中心，管理 `currentScreen`（HOME/CHAT/HISTORY/SETTINGS/APPEARANCE）、`messages`（Message[]，每个 Message 含多个 MessagePart）、`history`、视频播放覆盖层。
+`App.tsx` 是状态中心，管理 `currentScreen`（HOME/CHAT/HISTORY/SETTINGS/APPEARANCE）、`messages`（Message[]，每个 Message 含多个 MessagePart）、`history`（服务端会话列表，**不再有硬编码假数据**）、`activeConversationId`、视频播放覆盖层。登录后拉取历史；点历史项按 `GET /conversations/:id` 还原消息（`payload` 是 `MessagePart[]` 的 JSON 串）。
 
-`geminiService.ts`（670 行）是 AI 服务层：V2 对话、TTS 分段语音合成与缓存（内存缓存，10 分钟 TTL）、视频分析 Job 创建与轮询、带指数退避的重试（503/429）。
+`geminiService.ts`（670 行）是 AI 服务层：V2 对话、TTS 分段语音合成与缓存（内存缓存，10 分钟 TTL）、视频分析 Job 创建与轮询、带指数退避的重试（503/429）、会话历史接口（`listConversations` / `getConversation` / `renameConversation` / `appendConversationMessages`）。
+
+会话历史落库走两条路：**对话**在 `POST /api/v2/chat` 内由服务端事务落库（客户端只传 `conversation_id` / `client_msg_id`）；**视频分析等前端产生的消息**由 `App.persistLocalMessages` 调 `POST /conversations/:id/messages` 落库，且只存 text/report 部件（blob 地址和首帧 base64 不入库）。
 
 ### 系统提示词
 
@@ -93,7 +105,7 @@ Worker (`server/jobs/analysisWorker.ts`) 每 10 秒轮询 `analysis_jobs` 表中
 
 ### 类型定义
 
-核心类型在 `client/types.ts`：`Message`、`MessagePart`、`AnalysisReport`、`AppScreen`。
+核心类型在 `client/types.ts`：`Message`、`MessagePart`、`AnalysisReport`、`AppScreen`、`ConversationSummary`、`ConversationDetail`、`PersistedMessage`、`NewConversationMessage`（侧边栏列表直接用 `ConversationSummary`，`HistoryEntry` 已移除）。
 
 服务端类型在 orchestrator 文件中内联定义：`ChatRequest`、`ChatResponse`、`AnalysisReportPayload`、`TechniqueReport`。
 

@@ -1,12 +1,29 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AppScreen } from '../types.ts';
+import type { ConversationSummary } from '../types.ts';
 import type { AuthUser } from '../utils/auth.ts';
 
-interface HistoryEntry {
-  id: string;
-  title: string;
-  time: string;
-  section: 'recent' | 'earlier';
+const MINUTE = 60_000;
+const HOUR = 3_600_000;
+const DAY = 86_400_000;
+
+/** 列表右侧的相对时间：刚刚 / x 分钟前 / x 小时前 / 3月8日 / 2025/3/8 */
+function formatRelativeTime(ts?: number | null): string {
+  if (!ts) return '';
+  const diff = Date.now() - ts;
+  if (diff < MINUTE) return '刚刚';
+  if (diff < HOUR) return `${Math.floor(diff / MINUTE)} 分钟前`;
+  if (diff < DAY) return `${Math.floor(diff / HOUR)} 小时前`;
+
+  const date = new Date(ts);
+  const now = new Date();
+  if (date.getFullYear() === now.getFullYear()) return `${date.getMonth() + 1}月${date.getDate()}日`;
+  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+/** 一天以内算「最近」，其余归到「更早」 */
+function sectionOf(ts?: number | null): 'recent' | 'earlier' {
+  return ts && Date.now() - ts < DAY ? 'recent' : 'earlier';
 }
 
 interface SidebarProps {
@@ -14,21 +31,45 @@ interface SidebarProps {
   onClose: () => void;
   onNavigate: (screen: AppScreen) => void;
   onSettingsClick: () => void;
-  historyItems: HistoryEntry[];
+  /** 服务端会话列表（已按 q 过滤） */
+  historyItems: ConversationSummary[];
+  /** 受控搜索词 */
+  historyQuery: string;
+  /** 输入变化（App 内部 300ms 防抖后请求服务端） */
+  onSearch: (q: string) => void;
+  /** 点开某条历史会话 */
+  onSelectConversation: (id: string) => void;
+  /** 当前打开的会话，用于高亮 */
+  activeConversationId?: string | null;
   /** 当前登录用户；null 表示未登录 */
   user: AuthUser | null;
   onLogin: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onNavigate, onSettingsClick, historyItems, user, onLogin }) => {
-  const [searchTerm, setSearchTerm] = useState('');
+const Sidebar: React.FC<SidebarProps> = ({
+  isOpen,
+  onClose,
+  onNavigate,
+  onSettingsClick,
+  historyItems,
+  historyQuery,
+  onSearch,
+  onSelectConversation,
+  activeConversationId,
+  user,
+  onLogin,
+}) => {
+  const [searchTerm, setSearchTerm] = useState(historyQuery);
 
-  const filteredEntries = historyItems.filter(entry => 
-    entry.title.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // 退出登录 / 切换账号时 App 会把搜索词清空，这里跟着清
+  useEffect(() => {
+    if (historyQuery === '') setSearchTerm('');
+  }, [historyQuery]);
 
-  const recentItems = filteredEntries.filter(e => e.section === 'recent');
-  const earlierItems = filteredEntries.filter(e => e.section === 'earlier');
+  const recentItems = historyItems.filter(item => sectionOf(item.updated_at) === 'recent');
+  const earlierItems = historyItems.filter(item => sectionOf(item.updated_at) === 'earlier');
+
+  const searchPlaceholder = user ? '搜索历史对话...' : '登录后可搜索历史对话';
 
   return (
     <>
@@ -49,14 +90,18 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onNavigate, onSettin
         </div>
 
         <div className="px-4 py-4 shrink-0">
-          <div className="relative flex items-center bg-slate-100 dark:bg-background-dark/50 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2.5 focus-within:border-primary/50 transition-all shadow-inner">
+          <div className={`relative flex items-center bg-slate-100 dark:bg-background-dark/50 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2.5 focus-within:border-primary/50 transition-all shadow-inner ${user ? '' : 'opacity-60'}`}>
             <span className="material-symbols-outlined text-slate-400 dark:text-white/30 text-[20px] mr-2">search</span>
             <input 
               type="text"
-              placeholder="搜索历史对话..."
-              className="bg-transparent border-none text-[13px] text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-white/20 focus:ring-0 w-full p-0"
+              placeholder={searchPlaceholder}
+              disabled={!user}
+              className="bg-transparent border-none text-[13px] text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-white/20 focus:ring-0 w-full p-0 disabled:cursor-not-allowed"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                onSearch(e.target.value);
+              }}
             />
           </div>
         </div>
@@ -70,8 +115,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onNavigate, onSettin
                   <HistoryItem 
                     key={item.id}
                     title={item.title} 
-                    time={item.time} 
-                    onClick={() => onNavigate(AppScreen.CHAT)}
+                    time={formatRelativeTime(item.updated_at)} 
+                    active={item.id === activeConversationId}
+                    onClick={() => onSelectConversation(item.id)}
                   />
                 ))}
               </div>
@@ -86,18 +132,27 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onNavigate, onSettin
                   <HistoryItem 
                     key={item.id}
                     title={item.title} 
-                    time={item.time} 
-                    onClick={() => onNavigate(AppScreen.CHAT)}
+                    time={formatRelativeTime(item.updated_at)} 
+                    active={item.id === activeConversationId}
+                    onClick={() => onSelectConversation(item.id)}
                   />
                 ))}
               </div>
             </div>
           )}
 
-          {filteredEntries.length === 0 && (
+          {historyItems.length === 0 && (
             <div className="py-10 text-center">
-              <span className="material-symbols-outlined text-slate-200 dark:text-white/10 text-4xl block mb-2">history_toggle_off</span>
-              <p className="text-xs text-slate-400 italic">未找到匹配记录</p>
+              <span className="material-symbols-outlined text-slate-200 dark:text-white/10 text-4xl block mb-2">
+                {user ? 'history_toggle_off' : 'lock'}
+              </span>
+              <p className="text-xs text-slate-400 italic">
+                {!user
+                  ? '登录后查看历史对话'
+                  : searchTerm.trim()
+                    ? '未找到匹配记录'
+                    : '还没有历史对话'}
+              </p>
             </div>
           )}
         </div>
@@ -130,13 +185,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onNavigate, onSettin
   );
 };
 
-const HistoryItem: React.FC<{ title: string; time: string; onClick: () => void }> = ({ title, time, onClick }) => (
+const HistoryItem: React.FC<{ title: string; time: string; active?: boolean; onClick: () => void }> = ({ title, time, active, onClick }) => (
   <button 
     onClick={onClick}
-    className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-white/5 active:bg-slate-200 dark:active:bg-white/10 transition-all flex items-center justify-between gap-3 group overflow-hidden"
+    className={`w-full text-left px-3 py-2.5 rounded-xl active:bg-slate-200 dark:active:bg-white/10 transition-all flex items-center justify-between gap-3 group overflow-hidden ${active ? 'bg-primary/10 dark:bg-primary/15' : 'hover:bg-slate-100 dark:hover:bg-white/5'}`}
   >
     <div className="flex-1 min-w-0">
-      <h4 className="text-[13px] font-medium text-slate-700 dark:text-white/70 group-hover:text-slate-900 dark:group-hover:text-white transition-colors truncate leading-relaxed">
+      <h4 className={`text-[13px] font-medium truncate leading-relaxed transition-colors ${active ? 'text-primary dark:text-primary' : 'text-slate-700 dark:text-white/70 group-hover:text-slate-900 dark:group-hover:text-white'}`}>
         {title}
       </h4>
     </div>

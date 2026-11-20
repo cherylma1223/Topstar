@@ -1,6 +1,7 @@
 
 import React, { useRef, useEffect, useState } from 'react';
 import { Message, MessagePart } from '../types.ts';
+import type { NewConversationMessage } from '../types.ts';
 import AnalysisReportCard from './AnalysisReportCard.tsx';
 import ProcessingCard from './ProcessingCard.tsx';
 import TypewriterText from './TypewriterText.tsx';
@@ -21,6 +22,23 @@ interface ChatScreenProps {
   activeAudioId: string | null;
   onToggleAudio: (id: string | null) => void;
   isProcessing?: boolean; // 新增属性
+  /**
+   * 视频分析这类不走 /chat 的消息，渲染完交给上层落库。
+   * 返回会话 id（上层负责建会话），用于随后改标题。
+   */
+  onPersistMessages?: (
+    messages: NewConversationMessage[],
+    titleHint?: string,
+  ) => Promise<string | null>;
+}
+
+/** 落库用的纯文本摘要：文本部件 + 报告的综述/技术名 */
+function summarizeParts(parts: MessagePart[]): string {
+  const texts = parts.filter(p => p.type === 'text').map(p => p.content || '');
+  const reports = parts
+    .filter(p => p.type === 'report' && p.reportData)
+    .map(p => p.reportData!.summaryText || p.reportData!.techName || '');
+  return [...texts, ...reports].filter(Boolean).join('\n').trim();
 }
 
 const ChatScreen: React.FC<ChatScreenProps> = ({ 
@@ -34,7 +52,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   onPlayVideo,
   activeAudioId,
   onToggleAudio,
-  isProcessing: isGlobalProcessing = false // 使用 props 传进来的值
+  isProcessing: isGlobalProcessing = false, // 使用 props 传进来的值
+  onPersistMessages,
 }) => {
   const [isInternalProcessing, setIsInternalProcessing] = useState(false);
   const isProcessing = isInternalProcessing || isGlobalProcessing; // 组合内部和外部状态
@@ -101,11 +120,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     }
   };
 
-  // ─── 渲染分析报告 ────────────────────────────────────────────────
-  const renderAnalysisReport = (report: any, analysisType: string) => {
-    const msgId = `ai-report-${Date.now()}`;
-    let finalParts: MessagePart[] = [];
-
+  // ─── 构造 / 渲染分析报告 ──────────────────────────────────────────
+  const buildReportMessage = (report: any, analysisType: string): { parts: MessagePart[]; title: string } => {
     const reports = report?.reports || [];
 
     if (analysisType === 'match_strategy') {
@@ -118,30 +134,37 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
         isTyping: false,
       }));
 
-      finalParts = [
-        { type: 'text', content: '通过对视频的分析，我总结了双方的技战术特点及战术指导：', isTyping: true },
-        ...reportParts,
-      ];
-      onUpdateTitle?.(`${reports[0]?.techName || '球员 A'} vs ${reports[1]?.techName || '球员 B'} 战术分析`);
-    } else {
-      const r = reports[0] || {};
-      finalParts = [
+      return {
+        parts: [
+          { type: 'text', content: '通过对视频的分析，我总结了双方的技战术特点及战术指导：', isTyping: true },
+          ...reportParts,
+        ],
+        title: `${reports[0]?.techName || '球员 A'} vs ${reports[1]?.techName || '球员 B'} 战术分析`,
+      };
+    }
+
+    const r = reports[0] || {};
+    return {
+      parts: [
         { type: 'text', content: r.summaryText ? `${r.summaryText}` : '通过视频分析，我发现了以下技术要点：', isTyping: true },
         {
           type: 'report' as const,
           reportData: { ...r, variant: 'gradient' },
           isTyping: false,
         },
-      ];
-      onUpdateTitle?.(r.techName || '技术动作分析报告');
-    }
+      ],
+      title: r.techName || '技术动作分析报告',
+    };
+  };
 
+  const renderReportMessage = ({ parts, title }: { parts: MessagePart[]; title: string }) => {
     setMessages(prev => [...prev, {
-      id: msgId,
+      id: `ai-report-${Date.now()}`,
       sender: 'ai',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      parts: finalParts,
+      parts,
     }]);
+    onUpdateTitle?.(title);
   };
 
   // ─── 渲染错误消息 ─────────────────────────────────────────────────
@@ -215,13 +238,50 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
       // 2. 轮询 job 状态，直到 done 或 failed
       const report = await pollJobUntilDone(job_id);
 
-      // 3. 渲染报告
+      // 3. 先落库（用户视频消息 + 报告），拿到会话后再渲染 —— 渲染里会按报告内容改会话标题
       setIsInternalProcessing(false);
-      renderAnalysisReport(report, analysisType);
+      const built = buildReportMessage(report, analysisType);
+      const persistUserPart: MessagePart = { type: 'text', content: `[视频] ${file.name}` };
+
+      try {
+        await onPersistMessages?.(
+          [
+            {
+              role: 'user',
+              content: persistUserPart.content!,
+              payload: [persistUserPart],
+              client_msg_id: userMsgId,
+              analysis_job_id: job_id,
+            },
+            {
+              role: 'assistant', // icon-check-ignore：消息角色，不是图标
+              content: summarizeParts(built.parts) || built.title,
+              payload: built.parts.filter(p => p.type === 'text' || p.type === 'report'),
+            },
+          ],
+          built.title,
+        );
+      } catch (err) {
+        console.error('会话落库失败（不影响本次展示）', err);
+      }
+
+      renderReportMessage(built);
 
     } catch (err: any) {
       setIsInternalProcessing(false);
       const msg = err?.message || '视频分析失败，请重试';
+
+      // 失败也留痕，避免历史里只剩一条用户视频消息
+      try {
+        await onPersistMessages?.(
+          [
+            { role: 'user', content: `[视频] ${file.name}`, payload: [{ type: 'text', content: `[视频] ${file.name}` }], client_msg_id: userMsgId },
+            { role: 'assistant', content: `⚠️ ${msg}`, payload: [{ type: 'text', content: `⚠️ ${msg}` }] }, // icon-check-ignore
+          ],
+          `[视频] ${file.name}`,
+        );
+      } catch { /* 忽略 */ }
+
       renderErrorMessage(msg);
     }
   };

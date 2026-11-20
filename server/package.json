@@ -15,7 +15,7 @@
     "verify-sms": "tsx scripts/verifySms.ts",
     "verify-llm": "tsx scripts/verifyLlm.ts",
     "bench-thinking": "tsx scripts/benchThinking.ts",
-    "test": "node --import tsx --test \"llm/__tests__/*.test.ts\" \"video/__tests__/*.test.ts\" \"__tests__/*.test.ts\" \"utils/__tests__/*.test.ts\" \"eval/__tests__/*.test.ts\" \"videoAnalysis/__tests__/*.test.ts\" \"auth/__tests__/*.test.ts\" \"routes/__tests__/*.test.ts\" \"orchestrator/__tests__/*.test.ts\""
+    "test": "node --import tsx --test \"llm/__tests__/*.test.ts\" \"video/__tests__/*.test.ts\" \"__tests__/*.test.ts\" \"utils/__tests__/*.test.ts\" \"eval/__tests__/*.test.ts\" \"videoAnalysis/__tests__/*.test.ts\" \"auth/__tests__/*.test.ts\" \"conversations/__tests__/*.test.ts\" \"routes/__tests__/*.test.ts\" \"orchestrator/__tests__/*.test.ts\""
   },
   "keywords": [],
   "author": "",

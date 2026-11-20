@@ -7,6 +7,7 @@ import 'dotenv/config';
 import { loadKnowledgeBase } from './knowledge/loader';
 import v2Router from './routes/v2';
 import authRouter from './routes/auth';
+import conversationsRouter from './routes/conversations';
 import { initAuthService } from './auth';
 import { startLinkHealthCheck } from './jobs/linkHealthCheck';
 import { startTutorialSyncJob } from './jobs/tutorialSyncJob';
@@ -41,6 +42,7 @@ app.use(morgan('dev'));
 
 // 挂载路由
 app.use('/api/v2/auth', authRouter);
+app.use('/api/v2/conversations', conversationsRouter);
 app.use('/api/v2', v2Router);
 
 // 兼容旧的健康检查路径

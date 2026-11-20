@@ -2,6 +2,7 @@ import Database, { type Database as DatabaseType } from 'better-sqlite3';
 import path from 'path';
 import { migrateAnalysisJobs, migrateAnalysisJobsOwner, repairFilenameEncoding } from './dbMigrations';
 import { migrateAuthTables } from './auth/schema';
+import { migrateConversationTables } from './conversations/schema';
 
 const DB_PATH = path.join(__dirname, 'data', 'topstar.db');
 
@@ -75,6 +76,10 @@ migrateAuthTables(db);
 if (migrateAnalysisJobsOwner(db)) {
   console.log('[DB] analysis_jobs migrated: added=[user_id]（历史任务没有归属，任何账号都读不到）');
 }
+
+// 会话历史：conversations / conversation_messages（幂等）
+migrateConversationTables(db);
+console.log('[DB] conversation tables ready (conversations, conversation_messages)');
 
 // 修复历史上被误读为 latin1 的中文文件名（幂等）
 const repairedNames = repairFilenameEncoding(db);

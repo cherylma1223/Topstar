@@ -1,6 +1,13 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { AppScreen, Message, MessagePart } from './types.ts';
+import { AppScreen } from './types.ts';
+import type {
+  ConversationSummary,
+  Message,
+  MessagePart,
+  NewConversationMessage,
+  PersistedMessage,
+} from './types.ts';
 import Sidebar from './components/Sidebar.tsx';
 import Header from './components/Header.tsx';
 import HomeScreen from './components/HomeScreen.tsx';
@@ -9,14 +16,72 @@ import ChatInput from './components/ChatInput.tsx';
 import SettingsScreen from './components/SettingsScreen.tsx';
 import AppearanceSettingsScreen from './components/AppearanceSettingsScreen.tsx';
 import LoginModal from './components/LoginModal.tsx';
-import { getAIResponseV2 } from './geminiService.ts';
+import {
+  appendConversationMessages,
+  createConversation,
+  getAIResponseV2,
+  getConversation,
+  listConversations,
+  renameConversation,
+} from './geminiService.ts';
 import { getToken, logout, refreshSession, requestLogin, useAuthState } from './utils/auth.ts';
 
-interface HistoryEntry {
-  id: string;
-  title: string;
-  time: string;
-  section: 'recent' | 'earlier';
+/** 入口名 → 图标（历史会话还原时用） */
+const SERVICE_ICONS: Record<string, string> = {
+  '技术动作分析': 'slow_motion_video',
+  'AI 场外指导': 'person',
+  '器材推荐': 'sports_tennis',
+};
+
+function iconForService(service?: string | null): string {
+  return (service && SERVICE_ICONS[service]) || 'psychology';
+}
+
+function formatMessageTime(ts?: number | null): string {
+  return new Date(ts ?? Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+/** payload（MessagePart[] 的 JSON 串）优先；坏 JSON 退回纯文本气泡 */
+function partsFromPayload(payload: string | null, content: string): MessagePart[] {
+  if (payload) {
+    try {
+      const parsed = JSON.parse(payload);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((part: any) => ({ ...part, isTyping: false }));
+      }
+    } catch {
+      /* 坏数据：退回纯文本 */
+    }
+  }
+  return [{ type: 'text', content, isTyping: false }];
+}
+
+function messageFromPersisted(m: PersistedMessage): Message {
+  return {
+    id: m.id,
+    sender: m.role === 'user' ? 'user' : 'ai',
+    timestamp: formatMessageTime(m.created_at),
+    parts: partsFromPayload(m.payload, m.content),
+  };
+}
+
+/** 落库只保留能还原的纯文本 / 报告部件：blob 视频地址和截图 base64 刷新后就失效了 */
+function persistableParts(parts: MessagePart[]): MessagePart[] {
+  return parts.filter(part => part.type === 'text' || part.type === 'report');
+}
+
+function partsToContent(parts: MessagePart[]): string {
+  return parts
+    .map(part => {
+      if (part.type === 'text') return part.content || '';
+      if (part.type === 'report' && part.reportData) {
+        return part.reportData.summaryText || part.reportData.techName || '';
+      }
+      return '';
+    })
+    .filter(Boolean)
+    .join('\n')
+    .trim();
 }
 
 const App: React.FC = () => {
@@ -57,11 +122,51 @@ const App: React.FC = () => {
   // This fixes the 'isSettingsFlow' missing variable errors.
   const isSettingsFlow = currentScreen === AppScreen.SETTINGS || currentScreen === AppScreen.APPEARANCE;
 
-  const [history, setHistory] = useState<HistoryEntry[]>([
-    { id: '1', title: '反手拧拉技术提升策略', time: '14:30', section: 'recent' },
-    { id: '2', title: '正手攻球动作分析', time: '昨天', section: 'recent' },
-    { id: '3', title: '针对长胶选手发球抢攻战术的深度复盘', time: '昨天', section: 'recent' },
-  ]);
+  // 历史会话：来自服务端（按登录用户绑定），不再有硬编码假数据
+  const [history, setHistory] = useState<ConversationSummary[]>([]);
+  const [historyQuery, setHistoryQuery] = useState('');
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  // 发消息 / 落库回调里要用最新值，state 会有闭包延迟，这里用 ref 兜底
+  const activeConversationIdRef = useRef<string | null>(null);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const setConversationId = useCallback((id: string | null) => {
+    activeConversationIdRef.current = id;
+    setActiveConversationId(id);
+  }, []);
+
+  /** 拉历史会话列表；q 非空时为标题模糊搜索 */
+  const refreshHistory = useCallback(async (q: string = '') => {
+    if (!getToken()) {
+      setHistory([]);
+      return;
+    }
+    const items = await listConversations(q);
+    setHistory(items);
+  }, []);
+
+  // 登录后拉列表；退出登录 / 令牌失效后清空本机历史
+  useEffect(() => {
+    if (user) {
+      void refreshHistory('');
+      setHistoryQuery('');
+    } else {
+      setHistory([]);
+      setHistoryQuery('');
+      setConversationId(null);
+    }
+  }, [user?.id, refreshHistory, setConversationId]);
+
+  /** 侧边栏搜索：输入即响应，300ms 防抖后请求服务端 */
+  const handleSearchHistory = useCallback((q: string) => {
+    setHistoryQuery(q);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => { void refreshHistory(q); }, 300);
+  }, [refreshHistory]);
+
+  useEffect(() => () => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+  }, []);
 
   useEffect(() => {
     const isDarkMode = appearanceMode === 'dark';
@@ -119,6 +224,53 @@ const App: React.FC = () => {
     }
   }, [getInitialMessages, messages.length, currentScreen, activeService]);
 
+  /**
+   * 不是 /chat 来源的消息（视频分析结果、本地 mock 回复）落库。
+   * 还没有会话时先建一个，标题取首条用户消息。
+   */
+  const persistLocalMessages = useCallback(async (
+    messages: NewConversationMessage[],
+    titleHint?: string,
+  ): Promise<string | null> => {
+    if (!getToken()) return null;
+
+    let conversationId = activeConversationIdRef.current;
+    if (!conversationId) {
+      const firstUser = messages.find(m => m.role === 'user');
+      const created = await createConversation({
+        title: titleHint || firstUser?.content,
+        service: activeServiceCategory,
+      });
+      if (!created) return null;
+      conversationId = created.id;
+      setConversationId(conversationId);
+    }
+
+    await appendConversationMessages(conversationId, messages);
+    void refreshHistory(historyQuery);
+    return conversationId;
+  }, [activeServiceCategory, historyQuery, refreshHistory, setConversationId]);
+
+  /** 点开某条历史会话：拉详情 → 还原成 Message[] → 切到对话页 */
+  const openConversation = useCallback(async (id: string) => {
+    setActiveAudioId(null);
+    const detail = await getConversation(id);
+    if (!detail) {
+      void refreshHistory(historyQuery); // 可能是别的设备删了，刷新列表
+      return;
+    }
+
+    const service = detail.service || '当家球星';
+    setConversationId(detail.id);
+    setActiveService(service);
+    setActiveServiceCategory(service);
+    setActiveIcon(iconForService(service));
+    setMessages(detail.messages.map(messageFromPersisted));
+    setHasEngaged(true);
+    setSidebarOpen(false);
+    setCurrentScreen(AppScreen.CHAT);
+  }, [historyQuery, refreshHistory, setConversationId]);
+
   const getActionCoachingCardTitle = (response: Awaited<ReturnType<typeof getAIResponseV2>>) => {
     const actionReference = response.references?.find(ref => ref.type === 'actions_doc' && ref.title?.trim());
 
@@ -138,6 +290,7 @@ const App: React.FC = () => {
     setHasEngaged(false);
     setMessages([]);
     setSidebarOpen(false);
+    setConversationId(null); // 回首页 = 开新对话
   };
 
   const handleSendMessage = async (text: string) => {
@@ -191,8 +344,18 @@ const App: React.FC = () => {
 
     if (isAIService) {
       setIsProcessing(true);
-      const response = await getAIResponseV2(text, chatHistory);
+      // conversationId 为空 → 后端新建会话并回传 id；clientMsgId 用于重试去重
+      const response = await getAIResponseV2(text, chatHistory, undefined, {
+        conversationId: activeConversationIdRef.current,
+        service: activeServiceCategory,
+        clientMsgId: userMsgId,
+      });
       setIsProcessing(false);
+
+      if (response.conversation_id && response.conversation_id !== activeConversationIdRef.current) {
+        setConversationId(response.conversation_id);
+      }
+      void refreshHistory(historyQuery);
       
       const parts: MessagePart[] = [];
       
@@ -226,7 +389,6 @@ const App: React.FC = () => {
         parts: parts
       };
       setMessages(prev => [...prev, aiMsg]);
-      updateSessionTitle(text, updatedMessages);
       return;
     }
 
@@ -257,15 +419,21 @@ const App: React.FC = () => {
           }]
         };
         setMessages(prev => [...prev, aiMsg]);
+        // 本地 mock 回复也记进会话历史
+        void persistLocalMessages([
+          {
+            role: 'user',
+            content: text,
+            payload: [{ type: 'text', content: text }],
+            client_msg_id: userMsgId,
+          },
+          {
+            role: 'assistant', // icon-check-ignore：消息角色，不是图标
+            content: partsToContent(aiMsg.parts) || activeService,
+            payload: persistableParts(aiMsg.parts),
+          },
+        ], text);
       }, 1000);
-    }
-  };
-
-  const updateSessionTitle = (text: string, currentMessages: Message[]) => {
-    const isFirstUserMsg = currentMessages.filter(m => m.sender === 'user').length === 1;
-    if (isFirstUserMsg) {
-      const simplifiedTitle = text.length > 10 ? text.substring(0, 10) + "..." : text;
-      handleUpdateTitle(simplifiedTitle);
     }
   };
 
@@ -281,6 +449,7 @@ const App: React.FC = () => {
     setActiveService(title);
     setActiveServiceCategory(title);
     setActiveIcon(icon);
+    setConversationId(null); // 新入口 = 新会话，首条消息发出去时后端自动建
 
     if (initialText) {
       setMessages([]);
@@ -294,28 +463,22 @@ const App: React.FC = () => {
       setCurrentScreen(AppScreen.CHAT);
     }
 
-    const newSession: HistoryEntry = {
-      id: `chat-${Date.now()}`,
-      title: title,
-      time: '刚刚',
-      section: 'recent'
-    };
-    setHistory(prev => [newSession, ...prev]);
   };
 
+  /** 视频分析等场景会按报告内容改标题（如「反手拧拉」），同步写回服务端 */
   const handleUpdateTitle = (newTitle: string) => {
     setActiveService(newTitle);
-    setHistory(prev => {
-      const newHistory = [...prev];
-      if (newHistory.length > 0) {
-        newHistory[0] = { ...newHistory[0], title: newTitle };
-      }
-      return newHistory;
-    });
+    const conversationId = activeConversationIdRef.current;
+    if (!conversationId || !getToken()) return;
+    void renameConversation(conversationId, newTitle).then(() => refreshHistory(historyQuery));
   };
 
   const handleLogout = async () => {
     await logout();
+    // 退出登录只清本机：消息区、历史列表、当前会话；服务端数据保留，重新登录还能拉回来
+    setHistory([]);
+    setHistoryQuery('');
+    setConversationId(null);
     handleResetToHome(); // 清掉上一个账号的对话内容
   };
 
@@ -381,6 +544,7 @@ const App: React.FC = () => {
             activeAudioId={activeAudioId}
             onToggleAudio={setActiveAudioId}
             isProcessing={isProcessing} // 传入正在处理状态
+            onPersistMessages={persistLocalMessages}
           />
         );
       case AppScreen.SETTINGS:
@@ -426,6 +590,10 @@ const App: React.FC = () => {
           }}
           onSettingsClick={navigateToSettings}
           historyItems={history}
+          historyQuery={historyQuery}
+          onSearch={handleSearchHistory}
+          onSelectConversation={openConversation}
+          activeConversationId={activeConversationId}
           user={user}
           onLogin={() => requestLogin('登录后可以使用对话、视频分析和语音朗读')}
         />

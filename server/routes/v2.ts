@@ -8,7 +8,7 @@ import { randomUUID } from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
-import { handleChatEvent, type ChatRequest } from '../orchestrator/handleChatEvent';
+import { handleChatEvent, type ChatRequest, type ChatResponse } from '../orchestrator/handleChatEvent';
 import { recommendTutorials } from '../tutorials/recommendTutorials';
 import { updateTutorialStatus, getTutorial } from '../tutorials/loader';
 import { tts, isCapabilityAvailable, getPrimaryModel } from '../llm';
@@ -18,9 +18,42 @@ import { resolveIsVip } from '../auth/vip';
 import { requireAuth } from '../auth/middleware';
 import db from '../db';
 import { enqueueAnalysisJob } from '../jobs/queue';
+import { conversationExists, persistChatTurn } from '../conversations/store';
 
 
 const router = express.Router();
+
+/**
+ * 落库用的富媒体部件。形态必须与客户端构造的 MessagePart[] 一致
+ * （见 client/App.tsx 的 handleSendMessage），历史会话还原时才能渲染出同样的气泡。
+ */
+function buildAssistantParts(result: ChatResponse): unknown[] {
+  const actionRef = result.references?.find(ref => ref.type === 'actions_doc' && ref.title?.trim());
+  const cardTitle = result.intent === 'VIDEO_ANALYSIS'
+    ? (actionRef?.title ? `${actionRef.title}技术动作诊断报告` : '技术动作诊断报告')
+    : (actionRef?.title ? `${actionRef.title}技术指导` : '技术动作指导');
+
+  const videos = result.tutorialVideos || [];
+  if (videos.length > 0) {
+    return [{
+      type: 'report',
+      reportData: {
+        techName: cardTitle,
+        summaryText: result.answerText,
+        problems: [],
+        improvements: [],
+        videoLinks: videos.map(v => ({
+          title: `[${v.platform === 'douyin' ? '抖音' : 'B站'}] ${v.title}`,
+          url: v.url,
+        })),
+        variant: 'gradient',
+      },
+    }];
+  }
+
+  return [{ type: 'text', content: result.answerText }];
+}
+
 const ttsCache = new Map<string, { expiresAt: number; audio: { mime_type: string; sample_rate: number; data: string }; model: string }>();
 const TTS_CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -196,7 +229,7 @@ async function synthesizeSegment(text: string, voice: string) {
  * 结构化聊天接口（需要登录）
  */
 router.post('/chat', requireAuth, async (req, res) => {
-  const { message, history, event } = req.body;
+  const { message, history, event, conversation_id, service, client_msg_id } = req.body;
 
   if (!message || typeof message !== 'string') {
     return res.status(400).json({
@@ -222,6 +255,15 @@ router.post('/chat', requireAuth, async (req, res) => {
     });
   }
 
+  // 指定了会话就先校验归属：别等 LLM 生成完才发现会话不是自己的
+  const requestedConversationId = typeof conversation_id === 'string' ? conversation_id.trim() : '';
+  if (requestedConversationId && !conversationExists(db, requestedConversationId, req.user!.id)) {
+    return res.status(404).json({
+      success: false,
+      error: { code: 'CONVERSATION_NOT_FOUND', message: '会话不存在', retryable: false, request_id: '' },
+    });
+  }
+
   // VIP 由服务端判定（默认所有人都不是 VIP）；请求体里的 prefs / is_vip 一律忽略
   const chatRequest: ChatRequest = { message, history, event, isVip: resolveIsVip(req.headers) };
   const result = await handleChatEvent(chatRequest);
@@ -233,7 +275,30 @@ router.post('/chat', requireAuth, async (req, res) => {
     return res.status(httpStatus).json(result);
   }
 
-  res.json(result);
+  // 会话落库：回答已经产生，落库失败只记日志、不影响这次返回（客户端拿不到 conversation_id 就不进历史）
+  const response: Record<string, unknown> = { ...result };
+  try {
+    const turn = persistChatTurn(db, {
+      userId: req.user!.id,
+      conversationId: requestedConversationId || null,
+      service,
+      userContent: message,
+      userClientMsgId: typeof client_msg_id === 'string' ? client_msg_id : null,
+      assistantContent: result.answerText,
+      assistantPayload: buildAssistantParts(result),
+    });
+
+    if (turn) {
+      response.conversation_id = turn.conversationId;
+      if (turn.assistantMessageId) response.assistant_message_id = turn.assistantMessageId;
+    } else {
+      console.warn('[Conversations] persistChatTurn returned null: 会话不存在');
+    }
+  } catch (err: any) {
+    console.error('[Conversations] persist failed:', err?.message || err);
+  }
+
+  res.json(response);
 });
 
 /**
