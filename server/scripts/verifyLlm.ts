@@ -17,8 +17,8 @@ import { isLLMError, errorMessage } from '../llm/errors';
 import type { Capability } from '../llm/types';
 
 const ALL: Capability[] = ['chat', 'intent', 'video_pass1', 'video_pass15', 'video_pass2', 'tts'];
-/** 视频与语音目前只有 gemini 实现；切 provider 时这两类不能跟着走 */
-const PINNED: Capability[] = ['video_pass1', 'video_pass15', 'video_pass2', 'tts'];
+/** 视频分析目前只有 gemini 实现（需要 Files API 和视频理解）；tts 已切到 dashscope */
+const PINNED: Capability[] = ['video_pass1', 'video_pass15', 'video_pass2'];
 
 const CALLABLE: Capability[] = ['chat', 'intent'];
 

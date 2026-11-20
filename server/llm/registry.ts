@@ -8,10 +8,13 @@ import { LLMError } from './errors';
 import { GeminiProvider } from './gemini/GeminiProvider';
 import { GeminiFilesStorage } from './gemini/GeminiFilesStorage';
 import { DeepSeekProvider } from './deepseek/DeepSeekProvider';
+import { QwenTtsProvider } from './dashscope/QwenTtsProvider';
 
 const providerFactories: Record<ProviderName, () => LLMProvider> = {
   gemini: () => new GeminiProvider(),
   deepseek: () => new DeepSeekProvider(),
+  // 目前只实现 TTS（qwen-audio-3.1-tts-flash）
+  dashscope: () => new QwenTtsProvider(),
 };
 
 const storageFactories: Record<VideoStorageName, () => VideoStorage> = {
