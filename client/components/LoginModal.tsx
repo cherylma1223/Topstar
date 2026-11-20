@@ -25,6 +25,8 @@ const LoginModal: React.FC = () => {
   const [sending, setSending] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** 发送成功后的正向提示（与 error 共用同一行位置，优先显示 error） */
+  const [hint, setHint] = useState<string | null>(null);
   const codeInputRef = useRef<HTMLInputElement>(null);
 
   const open = loginPrompt !== null;
@@ -34,6 +36,7 @@ const LoginModal: React.FC = () => {
     if (!open) {
       setCode('');
       setError(null);
+      setHint(null);
     }
   }, [open]);
 
@@ -67,10 +70,12 @@ const LoginModal: React.FC = () => {
     if (!phoneValid) { setError('请输入正确的 11 位手机号'); return; }
     if (!consent) { setError('请先阅读并同意《用户协议》和《隐私政策》'); return; }
     setError(null);
+    setHint(null);
     setSending(true);
     try {
       const wait = await sendSmsCode(phone, true);
       setCooldown(wait);
+      setHint('验证码已发送，5 分钟内有效');
       codeInputRef.current?.focus();
     } catch (err) {
       if (err instanceof AuthApiError && err.retryAfter) setCooldown(err.retryAfter);
@@ -186,7 +191,12 @@ const LoginModal: React.FC = () => {
               </span>
             </label>
 
-            <div className="min-h-[20px] mt-3 text-[13px] text-red-500" role="alert">{error}</div>
+            <div
+              className={`min-h-[20px] mt-3 text-[13px] ${error ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'}`}
+              role={error ? 'alert' : 'status'}
+            >
+              {error || hint}
+            </div>
 
             <button
               type="submit"
