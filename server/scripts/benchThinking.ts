@@ -56,6 +56,11 @@ const LABEL_A = arg('label-a', 'A');
 const LABEL_B = arg('label-b', 'B');
 
 async function login(base: string): Promise<string> {
+  // 已切阿里云真发时，脚本拿不到验证码，且发码会真的产生费用/骚扰测试号：直接要求传令牌
+  const provider = (process.env.SMS_PROVIDER || '').trim().toLowerCase();
+  if (provider === 'aliyun') {
+    throw new Error('当前短信通道是 aliyun（真发），脚本无法自动取码；请用 --token 或 BENCH_TOKEN 传已有登录令牌');
+  }
   const phone = process.env.BENCH_PHONE || '13800138000';
   const code = process.env.SMS_FIXED_CODE || '123456';
   await fetch(`${base}/api/v2/auth/sms/send`, {

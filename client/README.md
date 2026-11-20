@@ -15,7 +15,12 @@ npm run dev        # http://localhost:3000
 
 对话、视频分析、语音朗读需要登录（手机号 + 短信验证码），首页、聊天页浏览和设置不需要。登录态与接口封装在 `utils/auth.ts`，登录窗口是 `components/LoginModal.tsx`。需要登录的接口一律用 `authedFetch` 调用；想让用户登录时调用 `requestLogin('原因')`。
 
-本地联调：后端 `server/.env` 里配置 `AUTH_SECRET`、`SMS_PROVIDER=console`，并可设 `SMS_FIXED_CODE=123456`（仅开发环境生效），登录时手机号随便填一个合法号码，验证码输入 123456。
+本地联调：后端 `server/.env` 里配置 `AUTH_SECRET`，短信通道有两种模式：
+
+- **演练（默认，零成本）**：`SMS_PROVIDER=console`，可设 `SMS_FIXED_CODE=123456`（仅开发环境生效）。手机号随便填一个合法号码，验证码输入 123456；验证码只打印在服务端日志里，不会真发。
+- **真发（联调真实链路）**：`SMS_PROVIDER=aliyun`，并补齐 `ALIYUN_SMS_ACCESS_KEY_ID` / `ALIYUN_SMS_ACCESS_KEY_SECRET` / `ALIYUN_SMS_SIGN_NAME` / `ALIYUN_SMS_TEMPLATE_CODE`，同时设 `SMS_DRY_RUN=0`（约 0.045 元/条）。先用 `cd server && npm run verify-sms -- <手机号> --real` 自检，再用 `--status` 查运营商投递回执。
+
+验证码规则：**5 分钟内有效、一次性使用、错误 5 次锁定**；同一号码 60 秒内不能重发、每日上限 10 条。
 
 端口被占用时可以换端口启动：`npm run dev -- --port 3100 --strictPort`（接口代理仍指向后端 `:3001`）。
 
