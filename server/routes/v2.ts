@@ -12,6 +12,9 @@ import { handleChatEvent, type ChatRequest, type ChatResponse } from '../orchest
 import { recommendTutorials } from '../tutorials/recommendTutorials';
 import { updateTutorialStatus, getTutorial } from '../tutorials/loader';
 import { tts, isCapabilityAvailable, getPrimaryModel } from '../llm';
+import { getCapabilityConfig } from '../llm/config';
+import { qwenTtsAudioChunks } from '../llm/dashscope/qwenTtsStream';
+import { resolveQwenVoice } from '../llm/dashscope/QwenTtsProvider';
 import { probeVideoDuration } from '../video/probe';
 import { fixMultipartFilename } from '../utils/filename';
 import { resolveIsVip } from '../auth/vip';
@@ -56,6 +59,10 @@ function buildAssistantParts(result: ChatResponse): unknown[] {
 
 const ttsCache = new Map<string, { expiresAt: number; audio: { mime_type: string; sample_rate: number; data: string }; model: string }>();
 const TTS_CACHE_TTL_MS = 10 * 60 * 1000;
+/** 流式命中缓存时，每个 SSE 事件的音频块大小（base64 前） */
+const TTS_STREAM_CHUNK_BYTES = 48 * 1024;
+/** 超过这个体积就不进缓存，避免长文本把内存吃满 */
+const TTS_CACHE_MAX_BYTES = 20 * 1024 * 1024;
 
 function cleanupExpiredTTSCache() {
   const now = Date.now();
@@ -380,6 +387,148 @@ router.post('/tts', requireAuth, async (req, res) => {
         request_id: requestId,
       },
     });
+  }
+});
+
+
+/**
+ * POST /api/v2/tts/stream
+ * 流式语音合成（SSE）：边合成边下发 PCM 块，浏览器边收边播
+ *
+ * 入参与 /tts 一致（contentType=text 传 text，contentType=report 传 report）。
+ * 只有 dashscope provider 支持真流式；其它 provider 退化成「合成完发一整块」，前端行为不变。
+ */
+router.post('/tts/stream', requireAuth, async (req, res) => {
+  const { contentType = 'text', text, report, isFieldGuidance = false, voice } = req.body || {};
+
+  if (!isCapabilityAvailable('tts')) {
+    return res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'API Key 未配置', retryable: false, request_id: '' },
+    });
+  }
+
+  const segments = contentType === 'report'
+    ? buildReportSegments(report, Boolean(isFieldGuidance))
+    : buildTextSegments(typeof text === 'string' ? text : '');
+  const content = segments.map(segment => segment.text).join('。').trim();
+
+  if (!content) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'TTS_TEXT_INVALID', message: '没有可朗读的文本内容', retryable: false, request_id: randomUUID() },
+    });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+
+  const requestId = randomUUID();
+  const startedAt = Date.now();
+  const abort = new AbortController();
+  // 注意：不能用 req.on('close')——POST 的请求体读完后它就会触发，会立刻掐断上游。
+  // 监听响应的 close，且只在响应未正常结束时才中断。
+  res.on('close', () => {
+    if (!res.writableEnded) abort.abort();
+  });
+
+  try {
+    const cfg = getCapabilityConfig('tts');
+    const requestedVoice = typeof voice === 'string' ? voice : undefined;
+    // 缓存键用「解析后的音色」：客户端传 Kore 或什么都不传，落到的都是同一个音色
+    const cacheVoice = cfg.provider === 'dashscope' ? resolveQwenVoice(requestedVoice) : (requestedVoice || 'default');
+    const cacheKey = `${cfg.provider}::${cfg.models[0]}::${cacheVoice}::${content}`;
+
+    let firstAudioMs = 0;
+    let bytes = 0;
+
+    // 命中缓存：把整段音频切成小块一次性下发，不再调模型（也不重复计费）
+    cleanupExpiredTTSCache();
+    const cached = ttsCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      const audio = Buffer.from(cached.audio.data, 'base64');
+      firstAudioMs = Date.now() - startedAt;
+      for (let offset = 0; offset < audio.length; offset += TTS_STREAM_CHUNK_BYTES) {
+        const slice = audio.subarray(offset, offset + TTS_STREAM_CHUNK_BYTES);
+        res.write(`event: audio\ndata: ${JSON.stringify({ data: slice.toString('base64') })}\n\n`);
+      }
+      bytes = audio.length;
+      res.write(`event: done\ndata: ${JSON.stringify({
+        request_id: requestId,
+        cache_hit: true,
+        first_audio_ms: firstAudioMs,
+        elapsed_ms: Date.now() - startedAt,
+        bytes,
+      })}\n\n`);
+      console.log(`[V2] TTS stream ${requestId} | cache=hit | chars=${content.length} | ${Date.now() - startedAt}ms`);
+      res.end();
+      return;
+    }
+
+    const collected: Buffer[] = [];
+
+    if (cfg.provider === 'dashscope') {
+      for await (const chunk of qwenTtsAudioChunks({
+        text: content,
+        voice: requestedVoice,
+        model: cfg.models[0],
+        signal: abort.signal,
+      })) {
+        if (firstAudioMs === 0) firstAudioMs = Date.now() - startedAt;
+        bytes += chunk.length;
+        collected.push(chunk);
+        res.write(`event: audio\ndata: ${JSON.stringify({ data: chunk.toString('base64') })}\n\n`);
+      }
+    } else {
+      const result = await tts({ text: content, voice: requestedVoice });
+      firstAudioMs = Date.now() - startedAt;
+      const audio = Buffer.from(result.data, 'base64');
+      bytes += audio.length;
+      collected.push(audio);
+      res.write(`event: audio\ndata: ${JSON.stringify({ data: result.data, mime_type: result.mimeType, sample_rate: result.sampleRate })}\n\n`);
+    }
+
+    // 合成成功且体积可控 → 写缓存，10 分钟内同一段文本重复播放直接秒开、不重复计费
+    if (bytes > 0 && bytes <= TTS_CACHE_MAX_BYTES) {
+      ttsCache.set(cacheKey, {
+        expiresAt: Date.now() + TTS_CACHE_TTL_MS,
+        audio: {
+          mime_type: 'audio/pcm',
+          sample_rate: 24000,
+          data: Buffer.concat(collected).toString('base64'),
+        },
+        model: cfg.models[0],
+      });
+    }
+
+    res.write(`event: done\ndata: ${JSON.stringify({
+      request_id: requestId,
+      cache_hit: false,
+      first_audio_ms: firstAudioMs,
+      elapsed_ms: Date.now() - startedAt,
+      bytes,
+    })}\n\n`);
+    console.log(
+      `[V2] TTS stream ${requestId} | provider=${cfg.provider} | cache=miss | chars=${content.length} | first=${firstAudioMs}ms | total=${Date.now() - startedAt}ms`
+    );
+    res.end();
+  } catch (err: any) {
+    if (abort.signal.aborted) {
+      res.end();
+      return;
+    }
+    console.error('[V2] TTS stream error:', err?.message || err);
+    try {
+      res.write(`event: error\ndata: ${JSON.stringify({
+        code: err?.code || 'TTS_GENERATION_FAILED',
+        message: err?.message || '语音合成失败',
+        request_id: requestId,
+      })}\n\n`);
+    } catch { /* 客户端可能已断开 */ }
+    res.end();
   }
 });
 

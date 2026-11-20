@@ -8,6 +8,7 @@ import {
   type TTSRequest,
 } from '../geminiService.ts';
 import { getToken, requestLogin } from '../utils/auth.ts';
+import { playStreamingSpeech, type StreamingSpeechHandle } from '../utils/streamingSpeech.ts';
 
 interface AIFormattedTextBubbleProps {
   id: string;
@@ -27,6 +28,7 @@ const AIFormattedTextBubble: React.FC<AIFormattedTextBubbleProps> = ({
   onComplete
 }) => {
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
 
   // 判断是否为结构化消息
@@ -36,6 +38,8 @@ const AIFormattedTextBubble: React.FC<AIFormattedTextBubbleProps> = ({
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const audioBuffersRef = useRef<AudioBuffer[] | null>(null);
+  /** 流式播放句柄；有它在说明当前走的是「边合成边播」路径 */
+  const streamingRef = useRef<StreamingSpeechHandle | null>(null);
   const playbackOffsetRef = useRef<number>(0);
   const startTimeRef = useRef<number>(0);
   const isManuallyStoppedRef = useRef<boolean>(false);
@@ -64,6 +68,12 @@ const AIFormattedTextBubble: React.FC<AIFormattedTextBubbleProps> = ({
   };
 
   const stopAudio = () => {
+    if (streamingRef.current) {
+      streamingRef.current.stop();
+      streamingRef.current = null;
+      setIsSpeaking(false);
+      setIsPaused(false);
+    }
     if (sourceRef.current) {
       try {
         isManuallyStoppedRef.current = true;
@@ -90,16 +100,15 @@ const AIFormattedTextBubble: React.FC<AIFormattedTextBubbleProps> = ({
   // 组件卸载时强制停止音频
   useEffect(() => {
     return () => {
+      if (streamingRef.current) {
+        try { streamingRef.current.stop(); } catch (e) { }
+        streamingRef.current = null;
+      }
       if (sourceRef.current) {
         try { sourceRef.current.stop(); } catch (e) { }
       }
     };
   }, []);
-
-  useEffect(() => {
-    if (isInitialMessage) return;
-    void loadAudioBuffers(true);
-  }, [content, isInitialMessage]);
 
   const loadAudioBuffers = async (isBackgroundPrefetch: boolean = false) => {
     const requestKey = getTTSRequestKey(speechRequest);
@@ -191,24 +200,50 @@ const AIFormattedTextBubble: React.FC<AIFormattedTextBubbleProps> = ({
     if (ctx.state === 'suspended') await ctx.resume();
 
     if (isSpeaking) {
-      stopAudio();
-      onToggleAudio(null);
+      // 已暂停 → 从暂停处续播；正在播 → 暂停
+      if (isPaused) {
+        streamingRef.current?.resume();
+        setIsPaused(false);
+      } else {
+        streamingRef.current?.pause();
+        setIsPaused(true);
+      }
       return;
     }
 
-    if (!audioBuffersRef.current?.length) {
-      if (!getToken()) {
-        requestLogin('语音朗读需要先登录');
-        return;
-      }
-      const buffers = await loadAudioBuffers();
-      if (!buffers?.length) {
-        console.error('Speech generation failed');
-        return;
-      }
+    if (!getToken()) {
+      requestLogin('语音朗读需要先登录');
+      return;
     }
 
-    playFromOffset(playbackOffsetRef.current);
+    // 主路径：流式合成，首包到达即开始播放
+    setIsLoadingAudio(true);
+    streamingRef.current = playStreamingSpeech({
+      contentType: 'text',
+      text: content,
+      ctx,
+      onStart: () => {
+        setIsLoadingAudio(false);
+        setIsSpeaking(true);
+        setIsPaused(false);
+        onToggleAudio(id);
+      },
+      onEnd: () => {
+        streamingRef.current = null;
+        setIsSpeaking(false);
+        setIsPaused(false);
+        onToggleAudio(null);
+      },
+      onError: async (err) => {
+        // 流式失败时回退到老的整段合成，避免直接播不出声
+        console.error('流式语音失败，回退整段合成：', err);
+        streamingRef.current = null;
+        setIsLoadingAudio(false);
+        setIsPaused(false);
+        const buffers = await loadAudioBuffers();
+        if (buffers?.length) playFromOffset(0);
+      },
+    });
   };
 
   return (
@@ -228,8 +263,8 @@ const AIFormattedTextBubble: React.FC<AIFormattedTextBubbleProps> = ({
             {isLoadingAudio ? (
               <div className="size-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
             ) : (
-              <span className={`material-symbols-outlined text-[18px] text-white font-bold ${isSpeaking ? 'animate-pulse' : ''}`}>
-                {isSpeaking ? 'pause' : 'volume_up'}
+              <span className={`material-symbols-outlined text-[18px] text-white font-bold ${isSpeaking && !isPaused ? 'animate-pulse' : ''}`}>
+                {isSpeaking && !isPaused ? 'pause' : 'volume_up'}
               </span>
             )}
           </button>

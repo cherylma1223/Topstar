@@ -8,6 +8,7 @@ import {
   type TTSRequest,
 } from '../geminiService.ts';
 import { getToken, requestLogin } from '../utils/auth.ts';
+import { playStreamingSpeech, type StreamingSpeechHandle } from '../utils/streamingSpeech.ts';
 import TypewriterText from './TypewriterText.tsx';
 
 interface AnalysisReportCardProps { 
@@ -56,12 +57,15 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
   const vipSummaryText = activeSummaryText?.match(vipBlockRegex)?.[0]?.trim() || '';
   const summaryBodyText = activeSummaryText?.replace(vipBlockRegex, '').trim() || '';
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [step, setStep] = useState<number>(isTyping ? 0 : 2); 
   
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const audioBuffersRef = useRef<AudioBuffer[] | null>(null);
+  /** 流式播放句柄；有它在说明当前走的是「边合成边播」路径 */
+  const streamingRef = useRef<StreamingSpeechHandle | null>(null);
   const playbackOffsetRef = useRef<number>(0);
   const startTimeRef = useRef<number>(0);
   const isManuallyStoppedRef = useRef<boolean>(false);
@@ -94,6 +98,12 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
   };
 
   const stopAudio = () => {
+    if (streamingRef.current) {
+      streamingRef.current.stop();
+      streamingRef.current = null;
+      setIsSpeaking(false);
+      setIsPaused(false);
+    }
     if (sourceRef.current) {
       try { 
         isManuallyStoppedRef.current = true;
@@ -120,15 +130,15 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
   // 组件卸载时清理音频
   useEffect(() => {
     return () => {
+      if (streamingRef.current) {
+        try { streamingRef.current.stop(); } catch (e) {}
+        streamingRef.current = null;
+      }
       if (sourceRef.current) {
         try { sourceRef.current.stop(); } catch (e) {}
       }
     };
   }, []);
-
-  useEffect(() => {
-    void loadAudioBuffers(true);
-  }, [report, activeSummaryText, isFieldGuidance]);
 
   const loadAudioBuffers = async (isBackgroundPrefetch: boolean = false) => {
     const requestKey = getTTSRequestKey(speechRequest);
@@ -219,25 +229,52 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
     const ctx = audioCtxRef.current;
     if (ctx.state === 'suspended') await ctx.resume();
 
-    if (isSpeaking && sourceRef.current) {
-      stopAudio();
-      onToggleAudio(null);
+    if (isSpeaking) {
+      // 已暂停 → 从暂停处续播；正在播 → 暂停
+      if (isPaused) {
+        streamingRef.current?.resume();
+        setIsPaused(false);
+      } else {
+        streamingRef.current?.pause();
+        setIsPaused(true);
+      }
       return;
     }
 
-    if (!audioBuffersRef.current?.length) {
-      if (!getToken()) {
-        requestLogin('语音朗读需要先登录');
-        return;
-      }
-      const buffers = await loadAudioBuffers();
-      if (!buffers?.length) {
-        console.error('Speech generation failed');
-        return;
-      }
+    if (!getToken()) {
+      requestLogin('语音朗读需要先登录');
+      return;
     }
 
-    playFromOffset(playbackOffsetRef.current);
+    // 主路径：流式合成，首包到达即开始播放
+    setIsLoadingAudio(true);
+    streamingRef.current = playStreamingSpeech({
+      contentType: 'report',
+      report: { ...report, summaryText: activeSummaryText },
+      isFieldGuidance,
+      ctx,
+      onStart: () => {
+        setIsLoadingAudio(false);
+        setIsSpeaking(true);
+        setIsPaused(false);
+        onToggleAudio(id);
+      },
+      onEnd: () => {
+        streamingRef.current = null;
+        setIsSpeaking(false);
+        setIsPaused(false);
+        onToggleAudio(null);
+      },
+      onError: async (err) => {
+        // 流式失败时回退到老的整段合成
+        console.error('流式语音失败，回退整段合成：', err);
+        streamingRef.current = null;
+        setIsLoadingAudio(false);
+        setIsPaused(false);
+        const buffers = await loadAudioBuffers();
+        if (buffers?.length) playFromOffset(0);
+      },
+    });
   };
 
   const handleStepComplete = () => {
@@ -277,8 +314,8 @@ const AnalysisReportCard: React.FC<AnalysisReportCardProps> = ({
             {isLoadingAudio ? (
               <div className="size-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
             ) : (
-              <span className={`material-symbols-outlined text-[18px] text-white font-bold ${isSpeaking ? 'animate-pulse' : ''}`}>
-                {isSpeaking ? 'pause' : 'volume_up'}
+              <span className={`material-symbols-outlined text-[18px] text-white font-bold ${isSpeaking && !isPaused ? 'animate-pulse' : ''}`}>
+                {isSpeaking && !isPaused ? 'pause' : 'volume_up'}
               </span>
             )}
           </button>
