@@ -15,6 +15,7 @@ import { tts, isCapabilityAvailable, getPrimaryModel } from '../llm';
 import { getCapabilityConfig } from '../llm/config';
 import { qwenTtsAudioChunks } from '../llm/dashscope/qwenTtsStream';
 import { resolveQwenVoice } from '../llm/dashscope/QwenTtsProvider';
+import { TtsCache } from '../tts/cache';
 import { probeVideoDuration } from '../video/probe';
 import { fixMultipartFilename } from '../utils/filename';
 import { resolveIsVip } from '../auth/vip';
@@ -57,20 +58,35 @@ function buildAssistantParts(result: ChatResponse): unknown[] {
   return [{ type: 'text', content: result.answerText }];
 }
 
-const ttsCache = new Map<string, { expiresAt: number; audio: { mime_type: string; sample_rate: number; data: string }; model: string }>();
+interface CachedTtsAudio {
+  audio: { mime_type: string; sample_rate: number; data: string };
+  model: string;
+}
+
 const TTS_CACHE_TTL_MS = 10 * 60 * 1000;
 /** 流式命中缓存时，每个 SSE 事件的音频块大小（base64 前） */
 const TTS_STREAM_CHUNK_BYTES = 48 * 1024;
-/** 超过这个体积就不进缓存，避免长文本把内存吃满 */
+/** 单条音频超过这个体积就不进缓存，避免一条长报告占满配额 */
 const TTS_CACHE_MAX_BYTES = 20 * 1024 * 1024;
 
-function cleanupExpiredTTSCache() {
-  const now = Date.now();
-  for (const [key, value] of ttsCache.entries()) {
-    if (value.expiresAt <= now) {
-      ttsCache.delete(key);
-    }
-  }
+const ttsCache = new TtsCache<CachedTtsAudio>({
+  ttlMs: TTS_CACHE_TTL_MS,
+  maxEntries: Number(process.env.TTS_CACHE_MAX_ENTRIES) || 60,
+  maxTotalBytes: (Number(process.env.TTS_CACHE_MAX_TOTAL_MB) || 200) * 1024 * 1024,
+});
+
+let ttsCacheRequests = 0;
+/** 每 20 次请求打一行命中率，便于观察缓存是否有效 */
+function logTtsCacheStats(): void {
+  ttsCacheRequests++;
+  if (ttsCacheRequests % 20 !== 0) return;
+  const stats = ttsCache.stats();
+  const total = stats.hits + stats.misses;
+  const hitRate = total > 0 ? Math.round((stats.hits / total) * 100) : 0;
+  console.log(
+    `[TTS cache] hit=${stats.hits} miss=${stats.misses} (${hitRate}%) entries=${stats.entries} ` +
+    `size=${(stats.totalBytes / 1024 / 1024).toFixed(1)}MB evictions=${stats.evictions}`
+  );
 }
 
 function sanitizeTextForTTS(text: string): string {
@@ -205,11 +221,12 @@ function buildReportSegments(report: any, isFieldGuidance: boolean) {
 }
 
 async function synthesizeSegment(text: string, voice: string) {
-  cleanupExpiredTTSCache();
+  ttsCache.cleanupExpired();
 
   const cacheKey = `${voice}::${text}`;
   const cached = ttsCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
+  if (cached) {
+    logTtsCacheStats();
     return { audio: cached.audio, model: cached.model, cacheHit: true };
   }
 
@@ -222,11 +239,8 @@ async function synthesizeSegment(text: string, voice: string) {
     data: result.data,
   };
 
-  ttsCache.set(cacheKey, {
-    expiresAt: Date.now() + TTS_CACHE_TTL_MS,
-    audio,
-    model: result.model,
-  });
+  ttsCache.set(cacheKey, { audio, model: result.model }, audio.data.length);
+  logTtsCacheStats();
 
   return { audio, model: result.model, cacheHit: false };
 }
@@ -446,9 +460,10 @@ router.post('/tts/stream', requireAuth, async (req, res) => {
     let bytes = 0;
 
     // 命中缓存：把整段音频切成小块一次性下发，不再调模型（也不重复计费）
-    cleanupExpiredTTSCache();
+    ttsCache.cleanupExpired();
     const cached = ttsCache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
+    if (cached) {
+      logTtsCacheStats();
       const audio = Buffer.from(cached.audio.data, 'base64');
       firstAudioMs = Date.now() - startedAt;
       for (let offset = 0; offset < audio.length; offset += TTS_STREAM_CHUNK_BYTES) {
@@ -493,16 +508,13 @@ router.post('/tts/stream', requireAuth, async (req, res) => {
 
     // 合成成功且体积可控 → 写缓存，10 分钟内同一段文本重复播放直接秒开、不重复计费
     if (bytes > 0 && bytes <= TTS_CACHE_MAX_BYTES) {
+      const data = Buffer.concat(collected).toString('base64');
       ttsCache.set(cacheKey, {
-        expiresAt: Date.now() + TTS_CACHE_TTL_MS,
-        audio: {
-          mime_type: 'audio/pcm',
-          sample_rate: 24000,
-          data: Buffer.concat(collected).toString('base64'),
-        },
+        audio: { mime_type: 'audio/pcm', sample_rate: 24000, data },
         model: cfg.models[0],
-      });
+      }, data.length);
     }
+    logTtsCacheStats();
 
     res.write(`event: done\ndata: ${JSON.stringify({
       request_id: requestId,
