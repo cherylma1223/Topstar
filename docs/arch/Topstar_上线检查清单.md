@@ -92,7 +92,8 @@
     - 联调两条命令：`npm run verify-sms -- 13800138000` 真发 1 条（约 0.045 元，打印 RequestId）；`npm run verify-sms -- 13800138000 --status` 查这个号码当天的**投递回执**（含运营商错误码的中文解释）——**受理成功 ≠ 送达**，两者要分开看
     - 单测覆盖签名算法、参数拼装、成功 / 业务失败 / HTTP 5xx / 网络异常、密钥不出现在请求和日志里（15 个）
     - **代码链路已打通（2026-11-09）**：签名「乐然同韵」、模板 `SMS_310260589`、变量名 `code`；阿里云受理成功（返回 RequestId），鉴权、模板、限流（60 秒内重发 429）、未勾选同意（`CONSENT_REQUIRED`）、错误验证码、同码二次使用都符合预期
-    - ⚠️ **但短信还没真正送达手机**：当天 3 条记录的回执都是 `sendStatus=2` + `PORT_NOT_REGISTERED`（运营商侧无该号码登记端口），常见于签名 / 短信通道审核未完全通过，或号码无效。属阿里云与运营商侧问题，**与代码无关，审批通过后无需改代码**，再跑一次 `verify-sms --status` 确认 `sendStatus=3` 即可
+    - ✅ **真发已闭环（2026-11-18）**：签名审批通过后，投递回执从 `sendStatus=2 / PORT_NOT_REGISTERED` 变为 `sendStatus=3 / DELIVERED`；`SMS_DRY_RUN=0` 关闭演练、`SMS_FIXED_CODE` 已注释，走真码真校验；端到端验证「发真实短信 → 用收到的验证码登录 → `/me` → 错误码/同码二次使用被拒」全部符合预期
+    - 回执解析细节：发送成功的记录 `ErrCode` 是 `DELIVERED`（送达标记，不是错误），已不再按错误码展示
     - 踩过的坑记一笔：阿里云 RPC 签名的 HMAC key 是 `AccessKeySecret + "&"`（末尾那个 `&` 是文档原文，不是笔误）。少了它只会返回 `SignatureDoesNotMatch`，而服务端回显的「server string to sign」和本地算的**一模一样**，极难定位；已用官方文档示例签名 `OLeaidS1JvxuMvnyHOwuJ+uX5qY=` 做单测锁死
   - **《用户协议》《隐私政策》文本**：登录窗口里是占位文字，点不开。文本由你们提供，见 B5
   - 没有压测；没有在微信 / iOS 真机上测过登录窗口（见第 6 节）
@@ -226,6 +227,7 @@ flowchart LR
 | 2026-11-08 | 初版：依据代码审查整理阻断 / 高 / 中三级清单，记录决策 L1、L2，建议顺序与未验证项 |
 | 2026-11-08 | B2（VIP）完成：VIP 改为服务端判定，请求体字段一律忽略，新增 `server/auth/vip.ts` 与默认关闭的内部测试令牌；修复知识库 `## 【核心秘诀】` 标题没被入模前剥离正则匹配的问题（13 个动作文档的秘诀正文此前会进入模型），新增 `server/orchestrator/vipFilter.ts`（含保守兜底）、HTTP 回归测试和真实知识库验证测试；后端测试 77 → 86 个 |
 | 2026-11-08 | B3（前端去境外 CDN）完成：Tailwind 改构建期编译；Noto Sans SC / Lexend 自托管；Material Symbols 裁成 12 KB 子集；删除 importmap 和未使用的 `@google/genai`；构建链新增 `check:icons`、`check:dist`；深色 / 浅色各 7 个界面做了像素对比。同时记录新发现：Google Drive 视频链接和百度封面图仍是境外 / 第三方内容依赖（B3 备注），H5 补充 mock 分支细节；`client/README.md` 重写 |
+| 2026-11-18 | **短信签名审批通过，切换为真发真校验**：`SMS_DRY_RUN=0`、注释 `SMS_FIXED_CODE`；实测回执 `sendStatus=3` + `DELIVERED`（此前为 `PORT_NOT_REGISTERED`），端到端登录链路用手机收到的真实验证码跑通；修正回执解析，成功记录的 `DELIVERED` 不再被当错误码展示（含测试） |
 | 2026-11-09 | **阿里云短信真发联调通过**：修正 RPC 签名 bug（HMAC key 必须是 `AccessKeySecret + "&"`，此前误用裸 Secret，表现为 `SignatureDoesNotMatch` 且服务端回显的待签名串与本地完全一致）；新增官方文档示例签名的回归测试；端到端验证「发码 → 登录 → /me → 退出」全链路（验证码取自阿里云发送记录，不依赖手机）；新增 `verify-sms --status` 回执查询（`QuerySendDetails`，同样自实现签名），用于区分「受理成功」与「真正送达」；`server/.env` 关闭 `SMS_FIXED_CODE`（改用真实验证码）。同时确认：官方 SDK 与本地实现的签名在相同输入下一致。**未完成：投递回执至今全部是 `PORT_NOT_REGISTERED`，等签名 / 通道审批通过** |
 | 2026-11-09 | **阿里云短信通道接入完成**：新增 `server/auth/aliyunSms.ts`（SendSms OpenAPI，HMAC-SHA1 自实现签名，未引官方 SDK；缺配置启动即失败并指出缺哪个变量；错误码翻译成排查建议）；`SMS_PROVIDER=aliyun` 不再报「尚未实现」；新增 `npm run verify-sms -- <手机号>` 真发联调脚本；根目录 `.env.example` 补全账号体系与短信变量（此前只有 Gemini / PORT）。未完成：真实发送未联调（等 AccessKey 与签名模板），仍需压测与真机 |
 | 2026-11-08 | 新增 **B6 账号体系（手机号 + 短信验证码登录）**并完成代码：决策 L3（首发做手机号登录，微信放小程序阶段）、L4（对话 / 视频分析 / TTS 要登录，其余免登录）；后端新增 `server/auth/` 账号服务与 `/api/v2/auth/*`，对话 / TTS / 创建任务 / 读任务全部要求登录，任务按用户归属（历史 72 条任务无主）；前端新增登录窗口与登录态，设置页和侧栏改为真实用户信息，去掉假的「剩余积分」；B1 里「任务结果要凭证」由此解决，限流改为按用户；H5 的「退出登录没有登录体系」解决；M5 改为后续部分；未完成项：阿里云短信接入（等签名模板）、协议文本、真机测试 |

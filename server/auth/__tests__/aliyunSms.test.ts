@@ -255,6 +255,12 @@ test('parseSendDetails：原始大写键和 SDK 转小写键都能解析，状�
   assert.equal(ok.errCode, undefined);
   assert.equal(pending.status, 'pending');
 
+  // 成功的记录里 ErrCode 是 DELIVERED，那是送达标记，不能当错误码展示
+  const delivered = parseSendDetails({ SmsSendDetailDTOs: { SmsSendDetailDTO: [{ PhoneNum: '138****0000', Content: 'c', SendStatus: 3, ErrCode: 'DELIVERED', SendDate: 'd', TemplateCode: 'SMS_1' }] } } as any);
+  assert.equal(delivered[0].status, 'success');
+  assert.equal(delivered[0].errCode, undefined);
+  assert.equal(delivered[0].errText, undefined);
+
   const lower = parseSendDetails({ smsSendDetailDTOs: { smsSendDetailDTO: [{ phoneNum: '138****0000', sendStatus: 3, content: 'z', templateCode: 'SMS_1', sendDate: 'd' }] } } as any);
   assert.equal(lower[0].status, 'success');
   assert.equal(parseSendDetails({ Code: 'OK' } as any).length, 0);

@@ -331,7 +331,10 @@ export function parseSendDetails(payload: AliyunSmsResponse): SmsSendDetail[] {
     .map((item: any) => {
       const numeric = Number(item.SendStatus ?? item.sendStatus);
       const status: SmsSendStatus = numeric === 3 ? 'success' : numeric === 2 ? 'failed' : numeric === 1 ? 'pending' : 'unknown';
-      const errCode: string | undefined = item.ErrCode ?? item.errCode ?? undefined;
+      const rawErrCode: string | undefined = item.ErrCode ?? item.errCode ?? undefined;
+      // 发送成功的记录里 ErrCode 是 DELIVERED/DELIVRD，那是「送达」标记而不是错误，不要当错误码展示
+      const isSuccessMarker = /^DELIVER/i.test(rawErrCode || '');
+      const errCode = isSuccessMarker ? undefined : rawErrCode;
       return {
         phone: item.PhoneNum ?? item.phoneNum ?? '',
         content: item.Content ?? item.content ?? '',

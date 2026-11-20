@@ -9,10 +9,17 @@
     { label: '其他', options: [['noisy', '环境嘈杂'], ['left-hand', '左手持拍'], ['others-in-frame', '画面有旁人']] },
   ];
 
+  const ADV_KEY = 'topstar.labeler.advanced';
+  const readAdvanced = () => {
+    try { return localStorage.getItem(ADV_KEY) === '1'; } catch (e) { return false; }
+  };
+
   const S = {
     data: null,
     index: 0,
     filter: 'all',
+    /** 默认「简单模式」：只显示教练必填的三项（动作 / 片段 / 问题点），其余折叠 */
+    showAdvanced: readAdvanced(),
     pendingStart: null,
     timer: null,
     saving: false,
@@ -252,6 +259,7 @@
       '<div class="field">',
       '<div class="field-label">有效击球片段 <span class="optional">点按钮取当前播放位置</span></div>',
       '<div class="seg-actions">',
+      '<button class="btn" id="segAll" type="button"' + (r.fileExists ? '' : ' disabled') + ' title="整片都是有效击球时，一键标为 00:00 - 片尾">整片有效</button>',
       '<button class="btn" id="segStart" type="button"' + (r.fileExists ? '' : ' disabled') + '>设起点' + pending + '</button>',
       '<button class="btn" id="segEnd" type="button"' + (r.fileExists ? '' : ' disabled') + '>设终点</button>',
       '<button class="btn" id="segClear" type="button">清空</button>',
@@ -262,24 +270,31 @@
       '</div>',
 
       '<div class="field">',
-      '<div class="field-label">教练语音</div>',
-      '<div class="radio-group">' + voice + '</div>',
-      '<p class="hint">教练口令是否清晰可辨。这一项决定我们能不能保留「听声音」的能力。</p>',
-      '</div>',
-
-      '<div class="field">',
       '<div class="field-label">主要问题点 <span class="optional">只勾你确实看到的，勾不全没关系</span></div>',
       issuesHtml,
       '</div>',
 
-      '<div class="field">',
-      '<div class="field-label">拍摄条件 <span class="optional">便于以后按场景分开看指标</span></div>',
-      '<div class="tag-groups">' + tagsHtml + '</div>',
+      '<div class="field adv-toggle">',
+      '<label class="chk-inline"><input type="checkbox" id="advToggle"' + (S.showAdvanced ? ' checked' : '') + '> 显示高级项（可不填：教练语音 / 拍摄条件 / 备注）</label>',
+      '<p class="hint">上面三项（动作类型、有效片段、问题点）之外的都属于加分项，不填不影响评测。</p>',
       '</div>',
 
-      '<details class="notes"><summary>备注（选填）</summary>',
-      '<textarea id="notes" placeholder="例如：教练在旁边喊「拉」">' + esc(r.notes) + '</textarea>',
-      '</details>',
+      S.showAdvanced ? [
+        '<div class="field">',
+        '<div class="field-label">教练语音 <span class="optional">可留空</span></div>',
+        '<div class="radio-group">' + voice + '</div>',
+        '<p class="hint">教练口令是否清晰可辨。这一项决定我们能不能保留「听声音」的能力。</p>',
+        '</div>',
+
+        '<div class="field">',
+        '<div class="field-label">拍摄条件 <span class="optional">可留空</span></div>',
+        '<div class="tag-groups">' + tagsHtml + '</div>',
+        '</div>',
+
+        '<details class="notes"><summary>备注（选填）</summary>',
+        '<textarea id="notes" placeholder="例如：教练在旁边喊「拉」">' + esc(r.notes) + '</textarea>',
+        '</details>',
+      ].join('') : '',
     ].join('');
 
     wireForm();
@@ -310,6 +325,29 @@
     }
 
     const segStart = $('#segStart');
+    const advToggle = $('#advToggle');
+    if (advToggle) {
+      advToggle.addEventListener('change', () => {
+        S.showAdvanced = advToggle.checked;
+        try { localStorage.setItem(ADV_KEY, S.showAdvanced ? '1' : '0'); } catch (e) { /* 忽略 */ }
+        renderForm();
+      });
+    }
+
+    const segAll = $('#segAll');
+    if (segAll) {
+      segAll.addEventListener('click', () => {
+        const v = document.getElementById('player');
+        const dur = v && isFinite(v.duration) && v.duration > 0 ? v.duration : null;
+        if (!dur) { alert('还没读到视频时长：先点一下播放（或等视频加载完）再试。'); return; }
+        const iv = { start: 0, end: Math.round(dur * 10) / 10 };
+        r.segments = [iv];
+        S.pendingStart = null;
+        renderForm();
+        saveSoon();
+      });
+    }
+
     if (segStart) segStart.addEventListener('click', setSegStart);
     const segEnd = $('#segEnd');
     if (segEnd) segEnd.addEventListener('click', setSegEnd);

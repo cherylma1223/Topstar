@@ -228,6 +228,61 @@ function cmdAdd(args: Args) {
   console.log(`  标注：已在 ${path.relative(REPO_ROOT, annFile)} 末尾追加一行${action ? '' : '，请打开文件填写 action_id'}；segments / issues 等列可以按需补充（留空的列对应的指标会自动跳过）\n`);
 }
 
+// ─── 命令：scan（把 eval/videos 里还没登记的视频批量登记进标注表）─────
+
+const VIDEO_EXTS = new Set(['.mp4', '.mov', '.m4v', '.avi', '.mkv', '.webm']);
+
+function cmdScan(args: Args) {
+  const annFile = flagStr(args, 'annotations') ?? DEFAULT_ANNOTATIONS;
+  if (/\.xlsx?$/i.test(annFile)) fail('scan 命令只支持 CSV 标注文件');
+  ensureAnnotationsFile(annFile);
+  const dryRun = args.flags['dry-run'] === true || args.flags['dry-run'] === '1';
+
+  const existing = loadAnnotations(annFile);
+  if (existing.errors.length) fail(`标注文件有错误，先修正再扫描：\n  - ${existing.errors.join('\n  - ')}`);
+  const knownFiles = new Set(existing.annotations.map(a => a.videoFile.toLowerCase()));
+  const knownIds = new Set(existing.annotations.map(a => a.videoId));
+
+  if (!fs.existsSync(VIDEOS_DIR)) fail(`视频目录不存在：${path.relative(REPO_ROOT, VIDEOS_DIR)}`);
+  const files = fs.readdirSync(VIDEOS_DIR)
+    .filter(n => !n.startsWith('.') && VIDEO_EXTS.has(path.extname(n).toLowerCase()))
+    .sort();
+
+  const pending: { videoId: string; videoFile: string }[] = [];
+  let seq = 1;
+  for (const file of files) {
+    if (knownFiles.has(file.toLowerCase())) continue;
+    const base = path.basename(file, path.extname(file));
+    let id = base.replace(/[^A-Za-z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+    if (!id) { id = `video-${seq}`; seq += 1; }
+    let candidate = id;
+    let n = 2;
+    while (knownIds.has(candidate)) { candidate = `${id}-${n}`; n += 1; }
+    knownIds.add(candidate);
+    pending.push({ videoId: candidate, videoFile: file });
+  }
+
+  if (pending.length === 0) {
+    console.log(`\n没有新视频：${path.relative(REPO_ROOT, VIDEOS_DIR)} 里的 ${files.length} 个文件都已在标注表中。\n`);
+    return;
+  }
+
+  if (dryRun) {
+    console.log(`\n将登记 ${pending.length} 个视频（--dry-run，未写入）：`);
+    pending.forEach(p => console.log(`  ${p.videoId}  ←  ${p.videoFile}`));
+    console.log('');
+    return;
+  }
+
+  const prev = fs.readFileSync(annFile, 'utf8');
+  const lines = pending.map(p => toCsvLine(COLUMNS.map(c => ({ video_id: p.videoId, video_file: p.videoFile } as Record<string, string>)[c] ?? '')));
+  fs.appendFileSync(annFile, (prev.endsWith('\n') ? '' : '\n') + lines.join('\n') + '\n', 'utf8');
+
+  console.log(`\n✓ 已登记 ${pending.length} 个视频到 ${path.relative(REPO_ROOT, annFile)}`);
+  pending.forEach(p => console.log(`  ${p.videoId}  ←  ${p.videoFile}`));
+  console.log('\n  动作 / 片段 / 问题点先留空，打开标注工具填这三项即可：\n    cd server && npm run labeler\n');
+}
+
 // ─── 命令：run ───────────────────────────────────────────────────
 
 function gitCommit(): string | undefined {
@@ -393,6 +448,7 @@ async function main() {
     case 'rules': return cmdRules(args);
     case 'candidates': return cmdCandidates(args);
     case 'add': return cmdAdd(args);
+    case 'scan': return cmdScan(args);
     case 'run': return cmdRun(args);
     case 'compare': return cmdCompare(args);
     case 'report': return cmdReport(args);

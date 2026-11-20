@@ -66,7 +66,36 @@ npm run eval -- add b2d271d0 dapanpan2 --action bh_loop
 
 ### 第 3 步：填标注表
 
-用 Excel / Numbers / 任意文本编辑器打开 `eval/labels/annotations.csv`。**保存时选「CSV UTF-8」**，否则中文会乱码。
+**推荐用网页标注工具**（教练用，不用碰命令行）：
+
+```bash
+cd server && npm run labeler     # http://127.0.0.1:3100
+```
+
+也可以直接用 Excel / Numbers / 文本编辑器打开 `eval/labels/annotations.csv`（**保存时选「CSV UTF-8」**，否则中文会乱码）。
+
+#### 最小标注集（教练只做这三项）
+
+| 必做 | 用途 | 花费时间 |
+|---|---|---|
+| `action_id` | 动作分类准确率 | 一次下拉，约 2 秒 |
+| `segments` | 片段切割 IoU / 边界误差（连续对练可直接用工具里的「**整片有效**」一键填） | 0–20 秒 |
+| `issues` | 诊断问题点 F1（只在明显时勾，拿不准留空） | 0–30 秒 |
+
+| 可完全不填 | 现状 |
+|---|---|
+| `has_voice`、`tags`、`notes` | **目前不参与任何指标**，只在评测记录里随行带上，留给将来按「有无口令 / 拍摄条件」分维度统计 |
+
+也就是说教练一条视频大约 30–60 秒；留空的列，对应指标会自动跳过（报告里会显示因缺标注被跳过的数量，不会静默变成 0 分）。
+
+#### 批量登记视频
+
+视频拷进 `eval/videos/` 之后：
+
+```bash
+npm run eval -- scan --dry-run   # 先看会登记哪些
+npm run eval -- scan             # 只填 video_id / video_file，其余留空
+```
 
 一行 = 一个视频。**留空 = 没标注**（这个指标会自动跳过这个视频）；**填 `none` = 明确没有**。
 
