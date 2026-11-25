@@ -9,7 +9,7 @@ import { evaluateClassification } from '../videoAnalysis/recognitionDecision';
  * Pass 1.5 单独调试脚本
  *
  * 模型由 video_pass15 能力配置决定，可临时覆盖：
- *   LLM_VIDEO_PASS15_MODELS=gemini-2.5-flash npx tsx scripts/testPass15.ts
+ *   LLM_VIDEO_PASS15_MODELS=gemini-4-argon npx tsx scripts/testPass15.ts
  */
 async function test() {
   console.log('Loading knowledge...');

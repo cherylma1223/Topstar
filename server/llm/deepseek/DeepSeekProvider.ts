@@ -157,7 +157,7 @@ export class DeepSeekProvider implements LLMProvider {
   async tts(_req: TTSRequest, model: string): Promise<Omit<AudioResult, 'provider' | 'model'>> {
     throw new LLMError(
       'NOT_CONFIGURED',
-      'DeepSeek has no TTS; keep LLM_TTS_PROVIDER=gemini',
+      'DeepSeek has no TTS; use LLM_TTS_PROVIDER=dashscope (default) or gemini',
       { provider: 'deepseek', model }
     );
   }

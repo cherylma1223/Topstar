@@ -32,6 +32,7 @@ cd server && npm run bench-thinking              # 对比两个实例的耗时/t
 - 客户端通过 Vite proxy 将 `/api` 请求代理到 `localhost:3001`，所有 API 密钥仅存在于服务端
 - 服务端配置全部在 `server/.env`（变量说明见 `server/auth/aliyunSms.ts` 顶部注释；根目录 `.env.example` 是本地样例，被 .gitignore 忽略）；缺 `AUTH_SECRET` 或短信通道配置不安全会**启动失败**
 - 登录态在请求头 `Authorization: Bearer <令牌>`，令牌存 `sessions` 表（只存 sha256）；手机号与验证码均以 `AUTH_SECRET` 做 HMAC 后落库
+- 语音播报默认走阿里云百炼：模型 `qwen-audio-3.1-tts-flash`、音色 `longhua_v3.1`（`DASHSCOPE_TTS_VOICE` 可改；客户端传 Gemini 音色名如 `Kore` 一律回落默认）；需要 `DASHSCOPE_API_KEY`，缺了报未配置。切回谷歌设 `LLM_TTS_PROVIDER=gemini`
 - DeepSeek 思考模式当前**全线关闭**（`DEEPSEEK_THINKING=disabled`）：实测 4 类问题平均快 2.3~2.6 倍、output token 降至约 1/4，模板段落完整度不变；逐条对比见 `server/scripts/benchThinking.ts`
 - 短信通道开发期默认**演练模式**（`SMS_DRY_RUN` 未设时：开发不调阿里云、只打日志；生产必须真发，配了 `SMS_DRY_RUN=1` 拒绝启动）；真发送 `SMS_DRY_RUN=0` 或 `npm run verify-sms -- <号码> --real`
 - 会话历史**按登录用户绑定**：会话/消息接口一律 `requireAuth`，读别人的会话返回 404（不区分「不存在」）；退出登录**只清本机**（消息区 + 历史列表），服务端数据保留，同一账号重新登录后恢复；未登录时侧边栏历史区为空且搜索框禁用
@@ -68,7 +69,7 @@ cd server && npm run bench-thinking              # 对比两个实例的耗时/t
 1. **Pass 1**：识别有效乒乓球动作片段，过滤无效内容
 2. **Pass 2**：对有效片段逐帧分析，生成 TechniqueReport（问题点 + 改进建议 + 视频链接）
 
-模型优先级：`gemini-3.1-pro-preview` → `gemini-2.5-pro` → `gemini-2.5-flash`
+模型优先级（Pass 1 / 2）：`gemini-4-argon` → `gemini-3.1-pro-preview` → `gemini-3.8-flash`；Pass 1.5 只有前两个（`3.8-flash` 在测评里把反手拉球判成了正手）。模型链定义在 `server/llm/config.ts`，可用 `LLM_VIDEO_PASS<n>_MODELS` 覆盖
 
 视频先上传 Gemini Files API，轮询至 ACTIVE 状态，分析完成后清理。
 
