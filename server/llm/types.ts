@@ -21,8 +21,11 @@ export type Capability =
 
 export type ProviderName = 'gemini' | 'deepseek' | 'dashscope';
 
-/** 视频托管实现。Gemini 用 Files API；国内模型一般用对象存储签名 URL */
-export type VideoStorageName = 'gemini_files';
+/**
+ * 视频托管实现。Gemini 用 Files API；国内模型用对象存储签名 URL。
+ * bailian_temp = 百炼免费临时空间（≤1GB、48h，官方标注勿用于生产），只做开发 / 评测用。
+ */
+export type VideoStorageName = 'gemini_files' | 'bailian_temp';
 
 // ─── 视频引用 ────────────────────────────────────────────────────
 

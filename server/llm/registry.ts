@@ -8,17 +8,20 @@ import { LLMError } from './errors';
 import { GeminiProvider } from './gemini/GeminiProvider';
 import { GeminiFilesStorage } from './gemini/GeminiFilesStorage';
 import { DeepSeekProvider } from './deepseek/DeepSeekProvider';
-import { QwenTtsProvider } from './dashscope/QwenTtsProvider';
+import { DashScopeProvider } from './dashscope/DashScopeProvider';
+import { BailianTempStorage } from './dashscope/BailianTempStorage';
 
 const providerFactories: Record<ProviderName, () => LLMProvider> = {
   gemini: () => new GeminiProvider(),
   deepseek: () => new DeepSeekProvider(),
-  // 目前只实现 TTS（qwen-audio-3.1-tts-flash）
-  dashscope: () => new QwenTtsProvider(),
+  // 文本 / 视频（兼容模式）+ TTS（qwen-audio-3.1-tts-flash），见 dashscope/DashScopeProvider.ts
+  dashscope: () => new DashScopeProvider(),
 };
 
 const storageFactories: Record<VideoStorageName, () => VideoStorage> = {
   gemini_files: () => new GeminiFilesStorage(),
+  // 开发 / 评测用：百炼免费临时空间（48h、≤1GB），不要用于生产
+  bailian_temp: () => new BailianTempStorage(),
 };
 
 const providers = new Map<string, LLMProvider>();
