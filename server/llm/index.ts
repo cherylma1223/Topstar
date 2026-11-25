@@ -27,6 +27,16 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/**
+ * 结构不合规视为失败的环节：这些能力的输出直接决定用户看到的内容，
+ * 缺失 required 字段时宁可按可重试错误重来，也不要把半成品/空报告交给业务层。
+ * 其余能力（chat / intent / video_pass15）保持宽松：只记 schemaErrors 不抛错。
+ */
+const STRICT_SCHEMA_CAPABILITIES: ReadonlySet<Capability> = new Set<Capability>(['video_pass1', 'video_pass2']);
+
+/** JSON 结构不合规的重试上限：固定 1 次（视频一次调用就是上万 token，不宜多试） */
+const PARSE_RETRY_LIMIT = 1;
+
 function tag(cap: Capability, model: string, traceId?: string): string {
   return `[LLM ${cap}${traceId ? ` ${traceId}` : ''} ${model}]`;
 }
@@ -42,7 +52,7 @@ async function withRetryPolicy<T>(
       return await op();
     } catch (err) {
       const llmErr = isLLMError(err) ? err : undefined;
-      const limit = llmErr?.code === 'PARSE_FAILED' ? Math.max(1, policy.maxRetries) : policy.maxRetries;
+      const limit = llmErr?.code === 'PARSE_FAILED' ? PARSE_RETRY_LIMIT : policy.maxRetries;
       if (llmErr?.retryable && attempt < limit) {
         const delay = policy.initialDelayMs * Math.pow(2, attempt);
         console.warn(`${label} ${llmErr.code}, retrying in ${delay}ms (${attempt + 1}/${limit}): ${llmErr.message}`);
@@ -94,8 +104,14 @@ async function generateOnce(provider: LLMProvider, req: GenerateRequest, model: 
   result.json = coerceToSchema(parsed, req.responseSchema);
   const schemaErrors = validateJson(result.json, req.responseSchema);
   if (schemaErrors.length > 0) {
-    result.schemaErrors = schemaErrors;
     console.warn(`${tag(req.capability, model, req.traceId)} schema check failed: ${schemaErrors.slice(0, 5).join('; ')}`);
+    if (STRICT_SCHEMA_CAPABILITIES.has(req.capability)) {
+      // 交给 withRetryPolicy 重试：成功后正常返回，仍失败则抛给业务层（Pass 1/2 会映射成 REPORT_PARSE_FAILED）
+      throw new LLMError('PARSE_FAILED', `schema check failed: ${schemaErrors.slice(0, 5).join('; ')}`, {
+        provider: provider.name, model,
+      });
+    }
+    result.schemaErrors = schemaErrors;
   }
   return result;
 }

@@ -122,12 +122,48 @@ test('JSON 解析失败时即使 maxRetries=0 也重试一次', async () => {
   assert.deepEqual(fake.calls, ['a', 'a']);
 });
 
-test('Schema 校验不通过时不抛错，返回 schemaErrors；数组自动纠正为对象', async () => {
+test('非严格环节（chat）：Schema 校验不通过时不抛错，返回 schemaErrors；数组自动纠正为对象', async () => {
   __setProviderForTest('gemini', new FakeProvider({ a: [{ text: '[{"segments":[]}]' }] }));
-  useModels('VIDEO_PASS1', ['a'], 0);
+  useModels('CHAT', ['a'], 0);
+
+  const r = await generate(req({ capability: 'chat', responseSchema: SCHEMA }));
+  assert.deepEqual(r.json, { segments: [] });
+  assert.deepEqual(r.schemaErrors, ['$.total: required']);
+});
+
+test('严格环节（video_pass1）：结构不合规按 PARSE_FAILED 重试一次，第二次合规则成功', async () => {
+  const fake = new FakeProvider({
+    a: [
+      { text: '{"segments":[]}' },                       // 缺 total：第一次不合规
+      { text: '{"segments":[],"total":0}' },             // 第二次合规
+    ],
+  });
+  __setProviderForTest('gemini', fake);
+  useModels('VIDEO_PASS1', ['a'], 2);
 
   const r = await generate(req({ responseSchema: SCHEMA }));
-  assert.deepEqual(r.json, { segments: [] });
+  assert.deepEqual(r.json, { segments: [], total: 0 });
+  assert.equal(r.schemaErrors, undefined);
+  assert.deepEqual(fake.calls, ['a', 'a'], '只重试一次');
+});
+
+test('严格环节（video_pass2）：两次都不合规则抛 PARSE_FAILED，不再继续重试', async () => {
+  const fake = new FakeProvider({ a: [{ text: '{"segments":[]}' }, { text: '{"segments":[]}' }, { text: '{"segments":[]}' }] });
+  __setProviderForTest('gemini', fake);
+  useModels('VIDEO_PASS2', ['a'], 3);
+
+  await assert.rejects(
+    () => generate(req({ capability: 'video_pass2', responseSchema: SCHEMA })),
+    (e: unknown) => e instanceof LLMError && e.code === 'PARSE_FAILED' && e.retryable
+  );
+  assert.deepEqual(fake.calls, ['a', 'a'], '重试上限固定 1 次，即使配置允许更多');
+});
+
+test('video_pass15 仍宽松：结构不合规只记 schemaErrors，不抛错（分类层自己兜）', async () => {
+  __setProviderForTest('gemini', new FakeProvider({ a: [{ text: '{"segments":[]}' }] }));
+  useModels('VIDEO_PASS15', ['a'], 0);
+
+  const r = await generate(req({ capability: 'video_pass15', responseSchema: SCHEMA }));
   assert.deepEqual(r.schemaErrors, ['$.total: required']);
 });
 
@@ -149,6 +185,8 @@ test('不要求 JSON 时空文本原样返回（与迁移前 chat 行为一致�
 // ─── TTS / 可用性 ────────────────────────────────────────────────
 
 test('tts 返回音频并带上 provider / model', async () => {
+  // 默认 TTS provider 是 dashscope；这里用的是名为 gemini 的假 provider，需要显式切过去
+  process.env.LLM_TTS_PROVIDER = 'gemini';
   __setProviderForTest('gemini', new FakeProvider({ t1: [err('MODEL_UNAVAILABLE')] }));
   useModels('TTS', ['t1', 't2'], 0);
   const a = await tts({ text: '你好' });

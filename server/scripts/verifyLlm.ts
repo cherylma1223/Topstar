@@ -18,7 +18,12 @@ import type { Capability } from '../llm/types';
 
 const ALL: Capability[] = ['chat', 'intent', 'video_pass1', 'video_pass15', 'video_pass2', 'tts'];
 /** 视频分析目前只有 gemini 实现（需要 Files API 和视频理解）；tts 已切到 dashscope */
-const PINNED: Capability[] = ['video_pass1', 'video_pass15', 'video_pass2'];
+/** 标一下这行的 provider/models 是 .env 覆盖来的，还是代码里的区域默认值 */
+function sourceLabel(cap: Capability): string {
+  const key = cap.toUpperCase();
+  const fromEnv = Boolean((process.env[`LLM_${key}_PROVIDER`] || '').trim() || (process.env[`LLM_${key}_MODELS`] || '').trim());
+  return fromEnv ? '（.env 覆盖）' : '（区域默认值）';
+}
 
 const CALLABLE: Capability[] = ['chat', 'intent'];
 
@@ -60,7 +65,7 @@ async function main(): Promise<void> {
       models = `未配置：${errorMessage(err)}`;
     }
     const configured = isCapabilityAvailable(cap) ? 'yes' : 'NO';
-    const pinned = PINNED.includes(cap) ? '（固定 gemini）' : '';
+    const pinned = sourceLabel(cap);
     rows.push([cap, provider, models, configured, pinned]);
   }
 

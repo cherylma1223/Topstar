@@ -6,6 +6,7 @@ process.env.VIDEO_ANALYSIS_LOG_DISABLED = '1';
 
 import { __setProviderForTest } from '../../llm/registry';
 import type { GenerateRequest, LLMProvider, VideoRef, VideoStorage } from '../../llm';
+import { getCapabilityConfig } from '../../llm/config';
 import { loadAnalysisKnowledge } from '../analysisKnowledgeLoader';
 import { createTrace, isTransientUploadError, runAnalysisPasses, uploadWithRetry } from '../pipeline';
 
@@ -64,7 +65,8 @@ test('完整链路：trace 记录各环节的原始输出 / 模型 / token，act
   });
 
   assert.deepEqual(calls.map(c => c.capability), ['video_pass1', 'video_pass15', 'video_pass2']);
-  assert.equal(model, 'gemini-3.1-pro-preview');
+  // 首选型号跟随 config 的降级链（现在是 gemini-4-argon），不在测试里写死
+  assert.equal(model, getCapabilityConfig('video_pass1').models[0]);
 
   // 报告
   assert.equal(payload.reports.length, 1);
@@ -79,7 +81,7 @@ test('完整链路：trace 记录各环节的原始输出 / 模型 / token，act
   assert.deepEqual(trace.pass1!.usage, { inputTokens: 100, outputTokens: 10 });
   assert.equal(trace.pass15!.result.primary_action_id, 'bh_loop');
   assert.equal(trace.pass15!.decision.status, 'confirmed');
-  assert.equal(trace.pass15!.model, 'gemini-3.1-pro-preview');
+  assert.equal(trace.pass15!.model, getCapabilityConfig('video_pass15').models[0]);
   assert.deepEqual(trace.pass2!.usage, { inputTokens: 500, outputTokens: 50 });
   assert.equal((trace.pass2!.raw as any).techName, '反手拉球');
   assert.equal(typeof trace.timingsMs.passes, 'number');
@@ -143,6 +145,35 @@ test('分类为 unknown：降级为「未识别技术动作」，跳过 Pass 2�
   assert.deepEqual(payload.reports[0].problems, []);
   assert.equal(trace.pass15!.decision.status, 'unknown');
   assert.equal(trace.pass2, undefined);
+});
+
+test('Pass 1 结构不合规（缺 segments）时自动重试一次，偶发跑偏不再变成空报告', async () => {
+  let pass1Calls = 0;
+  const { provider } = fakeProvider(req => {
+    if (req.capability === 'video_pass1') {
+      pass1Calls++;
+      // 第一次模拟 qwen4-max 那种「拍平成单个片段对象」的输出
+      return { text: pass1Calls === 1 ? '{"start":"00:00","end":"00:19","description":"多球训练"}' : PASS1_OK };
+    }
+    if (req.capability === 'video_pass15') return { text: pass15('bh_loop', 0.92) };
+    return { text: PASS2_OK };
+  });
+  __setProviderForTest('gemini', provider);
+  process.env.LLM_VIDEO_PASS1_MAX_RETRIES = '2';
+  process.env.LLM_VIDEO_PASS1_RETRY_DELAY_MS = '0';
+  try {
+    const trace = createTrace('technique', 19);
+    const { payload } = await runAnalysisPasses({
+      jobId: 't', video: VIDEO, analysisType: 'technique', videoDurationSec: 19, trace,
+      deps: { recommendTutorials: () => [] },
+    });
+    assert.equal(pass1Calls, 2, '结构不合规触发一次重试');
+    assert.deepEqual(payload.valid_segments, [{ start: '00:00', end: '00:19', description: '多球训练' }]);
+    assert.equal(trace.error, undefined);
+  } finally {
+    delete process.env.LLM_VIDEO_PASS1_MAX_RETRIES;
+    delete process.env.LLM_VIDEO_PASS1_RETRY_DELAY_MS;
+  }
 });
 
 test('Pass 1 输出无法解析成 JSON：映射为 REPORT_PARSE_FAILED:pass1', async () => {
